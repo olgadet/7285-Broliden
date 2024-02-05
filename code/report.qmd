@@ -1,0 +1,111 @@
+---
+title: "#7285"
+format: html
+toc: true
+toc-expand: 3
+editor_options: 
+  chunk_output_type: console
+date: "`r format(Sys.time(), '%d %B, %Y')`"   
+project:
+  output-dir: _site
+# bibliography: references.bib 
+---
+
+```{r}
+#| code-fold: true
+#| echo: false
+#| message: false
+#| warning: false
+library(tidyverse)
+library(DT)
+```
+
+## Support request
+
+Risk factors for HIV acquisition.
+
+::: {.callout-note collapse="true"}
+## More information: Support request
+
+We have RNA-seq data (mRNA) from bulk human cervical tissue samples (2 time points x 100 patients) . Our research question is whether women with bacterial vaginosis have a different transcriptomic profile compared with women not having this infection. We have had a similar project with the same data set that Olga Dethlefsen has helped us with - there we compared the transcriptomic profile of low vs high estrogen levels.
+Here we have a new PhD-student who was part of the former study but not used to perform the data analysis herself. We expect the set-up being very similar to the previous project and would be happy if Olga can help us again. The expected time frame would be around 50 hrs spread over a few months (Jan - April 2024).
+
+Full support description available via [Redmine](https://projects.nbis.se/issues/7285)
+
+-   Request by: Kristina Broliden \<[kristina.broliden\@ki.se](mailto:kristina.broliden@ki.se){.email}\>
+-   Principal Investigator: Kristina Broliden \<[kristina.broliden\@ki.se](mailto:kristina.broliden@ki.se){.email}\>
+-   Organization: KI
+-   NBIS staff: Olga Dethlefsen \<[olga.dethlefsen\@nbis.se](mailto:olga.dethlefsen@nbis.se){.email}\>
+:::
+
+
+## Available data
+
+### V2 and V3
+
+Data include measurements from two phases, V2 and V3:
+
+-   V2 luteal phase (n = 58)
+-   V3 follicular phase (n = 66)
+
+### Clinical data
+
+Key variables:
+
+- Bacterial Vaginosis, BV, is a clinical diagnosis for cervicovaginal dysbiosis (simplified explanation). It is diagnosed using Nugent score, and each woman is assigned a number 0-10. 0-3= normal, 4-6= intermediate, 7-10 = BV. Coding: 0 = Normal, 1 = intermediate, 2 = BV. There is a separate BV-diagnosis available for V2 and V3.
+-   Age in years, it is same at both visit, V2 and V3.
+-   Hormone levels: estradiol \[pg/ml\] and progesterone \[ng/ml\]
+
+
+<!-- ::: {.callout-note collapse="true"} -->
+<!-- ### More information: Plasma hormone analysis -->
+
+<!-- Blood samples were collected by venipuncture using heparin as an anticoagulant, and plasma was isolated using a Ficoll density gradient. For the V2 samples, plasma levels for E2 and P4 were measured using the Milliplex Map Steroid/Thyroid Hormone Magnetic Bead Panel (Millipore, Merck, Darmstadt, Germany). The lower limits of detection for E2 and P4 were 20 pg/ml and 0.09 ng/ml respectively. Values below this were reported as "below Lower Limit of Detection" and were assigned a value of ½ LLD, being 10 pg/ml and 0.05 ng/ml for E2 and P4 respectively. -->
+
+<!-- For the V3 samples, plasma E2 and P4 levels were measured using electrochemiluminescence immunoassays (Roche Diagnostics) at the accredited Karolinska University Laboratory as previously described (Plos Pathogens peket). The LLDs for E2 and P4 were 22 pg/mL and 0.05 ng/mL, respectively. Values \<22 pg/mL (E2) and \<0.05 ng/mL (P4) were reported as "Below LLD", but for statistical reasons they were assigned values of 22 pg/mL and 0.05 ng/mL for E2 and P4, respectively. -->
+<!-- ::: -->
+
+<!-- ### Gene expression -->
+
+<!-- Gene expression counts were provided by BEA facility. -->
+
+<!-- -   BEA gene expression coding: BEA22P129_KB, run 2023-04 -->
+<!-- -   BEA gene expression coding: BEA19P035_KB, sequenced previously, bioinformatics pipeline re-run 2023-04 to match V2 -->
+
+<!-- ### Genes of interest -->
+
+<!-- ```{r} -->
+<!-- #| echo: false -->
+<!-- #| message: false -->
+<!-- #| warning: false -->
+
+<!-- file <- "../data/box/Selected genes to OD 20230504.csv" -->
+<!-- genes_int <- read_csv(file) -->
+
+<!-- datatable(genes_int, caption = "List of genes of interest.") -->
+
+<!-- ``` -->
+
+<!-- ## Methods -->
+
+<!-- - A set of clean data sets were prepared for V2 and V3 based on the data provided by the BEA and the group. This included raw count data matching clinical data, extracted relevant clinical data and genes annotations. For the latter, `biomaRt` package was used to annotate Ensembl gene IDs with chromosome name, start and end position, strand, symbol, description and gene biotype as well as corresponding Entrez Gene ID.  -->
+<!-- - `edgeR` was used for analysis of the gene expression data.  -->
+<!-- - Lowly expressed genes were filtered out retaining genes with a minimum count of 10 in at least 70% of samples.  -->
+<!-- - TMM normalization wass used for estimating relative RNA levels from the count data and normalized counts were $log2$ transformed.  -->
+<!-- - The normalized counts were used to examine the samples for outliers and relationships, using PCA. Association between PCA components and covariates was examined using linear regression model for numerical variables and using one-way ANOVA for categorical variables. -->
+<!-- - `edgeR` package was further used for association analysis between genes and E2 and P4 levels, adjusting for BV. Quasi-likelihood negative binomial generalized log-linear model was fitted to the data and gene-wise statistical test for a given coefficient (E2 or P4) was run to identify significant genes. P-values were adjusted for multiple testing using Benjamin & Hochberg procedure.  -->
+
+
+<!-- ## Results -->
+
+<!-- ### Data wrangling -->
+
+<!-- -   [prepare-data-sets.html](prepare-data-sets.html) -->
+
+<!-- ### EDA, exploratory data analysis -->
+
+<!-- -   [eda.html](eda.html) -->
+
+<!-- ### Statistical modelling -->
+
+<!-- -   [model.html](model.html) -->
