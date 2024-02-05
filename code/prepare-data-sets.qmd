@@ -33,71 +33,80 @@ require(biomaRt)
 # Clinical data
 
 ```{r}
-# load V2 samples
-file <- "../data/box/Sample ID to OD. V2 n=58 and V3 n=66 w hormone levels. 20230424.xlsx"
-df <- read_xlsx(file, sheet = "V2 controls FINAL LIST n=58")
-df_samples_v2 <- df %>%
-  dplyr::select(PatIDPx, PatID) %>%
-  mutate(PatID = as.character(PatID))
 
-# load V3 samples
-file <- "../data/box/Sample ID to OD. V2 n=58 and V3 n=66 w hormone levels. 20230424.xlsx"
-df <- read_xlsx(file, sheet = "V3 controls FINAL list n=66")
-df_samples_v3 <- df %>%
-  dplyr::select(PatIDPx, PatID) %>%
-  mutate(PatID = as.character(PatID))
-
-# load clinical data for V2
+# load meta data
 file <- "../data/box/metadata_ updated FB 20230504_to OD.xlsx"
 df <- read_xlsx(file)
 
-cols_v2 <- c("PatIDPx", "PatID", "age", 
+cols_v2_v3 <- c("PatIDPx", "PatID", "age", 
+             "BV_Diagnosis_v2...14", "Nugent_Score_v2",
+             "BV_Diagnosis_v3...16", "Nugent_Score_v3",
              "Conc_Estradiol_v2 pg/ml", "Below_LLD_E2_V2",
              "Conc_Progesteron_v2 ng/ml",   "Below_LLD_P4_V2", 
-             "BV_Diagnosis_v2...14")
-
-df_clin_v2 <- df %>%
-  dplyr::select(any_of(cols_v2)) %>%
-  rename(E2 = `Conc_Estradiol_v2 pg/ml`, 
-         P4 = `Conc_Progesteron_v2 ng/ml`, 
-         BV = `BV_Diagnosis_v2...14`, 
-         below_LLD_E2 = `Below_LLD_E2_V2`, 
-         below_LLD_P4 = Below_LLD_P4_V2) %>%
-  mutate(below_LLD_E2 = factor(below_LLD_E2, levels = c("no", "yes", NA)), 
-         below_LLD_P4 = factor(below_LLD_P4, levels = c("no", "yes", NA))) %>%
-  mutate(PatID = as.character(PatID)) %>%
-  mutate(age = as.numeric(age)) %>%
-  mutate(E2 = as.numeric(E2)) %>%
-  mutate(P4 = as.numeric(P4))
-
-
-# load clinical data for V3
-cols_v3 <- c("PatIDPx", "PatID", "age", 
              "Plasma_S_Estradiol_pg_mL_v3", "Below_LLD_E2_V3",
-             "Plasma_S_Prog_ng_mL_v3",   "Below_LLD_P4_V3", 
-             "BV_Diagnosis_v3...16")
+             "Plasma_S_Prog_ng_mL_v3",   "Below_LLD_P4_V3"
+             )
 
-df_clin_v3 <- df %>%
-  dplyr::select(any_of(cols_v3)) %>%
-    rename(E2= `Plasma_S_Estradiol_pg_mL_v3`, 
-         P4 = `Plasma_S_Prog_ng_mL_v3`, 
-         BV = `BV_Diagnosis_v3...16`, 
-         below_LLD_E2 = `Below_LLD_E2_V3`, 
-         below_LLD_P4 = Below_LLD_P4_V3) %>%
-  mutate(below_LLD_E2 = factor(below_LLD_E2, levels = c("no", "yes", NA)),  
-         below_LLD_P4 = factor(below_LLD_P4, levels = c("no", "yes", NA))) %>%
-  mutate(PatID = as.character(PatID)) %>%
-  mutate(age = as.numeric(age)) %>%
-  mutate(E2 = as.numeric(E2)) %>%
-  mutate(P4 = as.numeric(P4))
+df_clin <- df %>%
+  dplyr::select(any_of(cols_v2_v3)) %>%
+  rename(BV_v2 = `BV_Diagnosis_v2...14`, 
+         Nugent_v2 = `Nugent_Score_v2`, 
+         BV_v3 = `BV_Diagnosis_v3...16`, 
+         Nugent_v3 = `Nugent_Score_v3`,
+         E2_v2 = `Conc_Estradiol_v2 pg/ml`, 
+         P4_v2 = `Conc_Progesteron_v2 ng/ml`, 
+         below_LLD_E2_v2 = `Below_LLD_E2_V2`, 
+         below_LLD_P4_v2 = Below_LLD_P4_V2, 
+         E2_v3= `Plasma_S_Estradiol_pg_mL_v3`, 
+         P4_v3 = `Plasma_S_Prog_ng_mL_v3`, 
+         below_LLD_E2_v3 = `Below_LLD_E2_V3`, 
+         below_LLD_P4_v3 = Below_LLD_P4_V3
+         ) %>%
+  mutate(PatID = as.character(PatID),
+         age = as.numeric(age), 
+         BV_v2 = as.numeric(BV_v2), 
+         Nugent_v2 = as.numeric(Nugent_v2), 
+         BV_v3 = as.numeric(BV_v3), 
+         Nugent_v3 = as.numeric(Nugent_v3), 
+         E2_v2 = as.numeric(E2_v2), 
+         P4_v2 = as.numeric(P4_v2), 
+         E2_v3 = as.numeric(E2_v3), 
+         P4_v3 = as.numeric(P4_v3), 
+         below_LLD_E2_v2 = factor(below_LLD_E2_v2, levels = c("no", "yes", NA)), 
+         below_LLD_P4_v2 = factor(below_LLD_P4_v2, levels = c("no", "yes", NA)), 
+         below_LLD_E2_v3 = factor(below_LLD_E2_v3, levels = c("no", "yes", NA)), 
+         below_LLD_P4_v3 = factor(below_LLD_P4_v3, levels = c("no", "yes", NA)), 
+         ) 
+  
+```
 
-# add clinical data to samples for V2 and V3
-df_meta_v2 <- df_samples_v2 %>%
-  left_join(df_clin_v2)
 
-df_meta_v3 <- df_samples_v3 %>%
-  left_join(df_clin_v3)
+```{r}
 
+# How many samples have matching V2 and V3 entries
+# and how many with BV complete measurements
+
+df_clin %>%
+  dplyr::select(PatID, age, BV_v2, BV_v3) %>%
+  dim()
+
+df_clin %>%
+  dplyr::select(PatID, age, BV_v2, BV_v3) %>%
+  na.omit() %>%
+  dim()
+
+#TODO: update below LLD values for E2 and P4 and double-check numbers
+df_clin %>%
+  #dplyr::select(PatID, age, BV_v2, BV_v3) %>%
+  na.omit() %>%
+  dim()
+
+#TODO: check corresponding count data, tabulate set for analyses
+```
+
+
+
+```{r}
 # preview relevant clinical data for V2
 df_meta_v2 %>%
   head() %>%
@@ -108,8 +117,9 @@ df_meta_v3 %>%
   head() %>%
   datatable(caption = paste("Preview of the relevant clinical data for V3 samples: ", nrow(df_meta_v3), " samples and ", ncol(df_meta_v3), " variables.", sep="")) %>%
   formatSignif(columns = c("E2", "P4"), digits = 3)
-
 ```
+
+
 
 ```{r}
 # udate P4 LLD values to 0.05

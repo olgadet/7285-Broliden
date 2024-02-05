@@ -1,5 +1,13 @@
 # Mtg notes
 
+# ToDo
+
+
+- see if all matched V2 and V3 have corresponding count data
+- think about batch effect? do I need to account for days passed in models? Or enough as two time points V2 and V3?
+
+- (done) load clinical data, check V2 and V3 overlapp, all, complete data for age and BV
+
 ## 2023-01-23, Kristina, Alexandra
 
 - BV project background
