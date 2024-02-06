@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2024-02-05">
+<meta name="dcterms.date" content="2024-02-06">
 
 <title>#7285</title>
 <style>
@@ -52,6 +52,11 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#v2-and-v3" id="toc-v2-and-v3" class="nav-link" data-scroll-target="#v2-and-v3">V2 and V3</a></li>
   <li><a href="#clinical-data" id="toc-clinical-data" class="nav-link" data-scroll-target="#clinical-data">Clinical data</a></li>
   </ul></li>
+  <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results">Results</a>
+  <ul class="collapse">
+  <li><a href="#data-wrangling" id="toc-data-wrangling" class="nav-link" data-scroll-target="#data-wrangling">Data wrangling</a></li>
+  <li><a href="#eda-exploratory-data-analysis" id="toc-eda-exploratory-data-analysis" class="nav-link" data-scroll-target="#eda-exploratory-data-analysis">EDA, exploratory data analysis</a></li>
+  </ul></li>
   </ul>
 </nav>
 </div>
@@ -70,7 +75,7 @@ ul.task-list li input[type="checkbox"] {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 5, 2024</p>
+      <p class="date">February 6, 2024</p>
     </div>
   </div>
   
@@ -125,11 +130,23 @@ More information: Support request
 <li>Age in years, it is same at both visit, V2 and V3.</li>
 <li>Hormone levels: estradiol [pg/ml] and progesterone [ng/ml]</li>
 </ul>
-<!-- ::: {.callout-note collapse="true"} -->
-<!-- ### More information: Plasma hormone analysis -->
-<!-- Blood samples were collected by venipuncture using heparin as an anticoagulant, and plasma was isolated using a Ficoll density gradient. For the V2 samples, plasma levels for E2 and P4 were measured using the Milliplex Map Steroid/Thyroid Hormone Magnetic Bead Panel (Millipore, Merck, Darmstadt, Germany). The lower limits of detection for E2 and P4 were 20 pg/ml and 0.09 ng/ml respectively. Values below this were reported as "below Lower Limit of Detection" and were assigned a value of ½ LLD, being 10 pg/ml and 0.05 ng/ml for E2 and P4 respectively. -->
-<!-- For the V3 samples, plasma E2 and P4 levels were measured using electrochemiluminescence immunoassays (Roche Diagnostics) at the accredited Karolinska University Laboratory as previously described (Plos Pathogens peket). The LLDs for E2 and P4 were 22 pg/mL and 0.05 ng/mL, respectively. Values \<22 pg/mL (E2) and \<0.05 ng/mL (P4) were reported as "Below LLD", but for statistical reasons they were assigned values of 22 pg/mL and 0.05 ng/mL for E2 and P4, respectively. -->
-<!-- ::: -->
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-2-contents" aria-controls="callout-2" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+More information: Plasma hormone analysis
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-2" class="callout-2-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Blood samples were collected by venipuncture using heparin as an anticoagulant, and plasma was isolated using a Ficoll density gradient. For the V2 samples, plasma levels for E2 and P4 were measured using the Milliplex Map Steroid/Thyroid Hormone Magnetic Bead Panel (Millipore, Merck, Darmstadt, Germany). The lower limits of detection for E2 and P4 were 20 pg/ml and 0.09 ng/ml respectively. Values below this were reported as “below Lower Limit of Detection” and were assigned a value of ½ LLD, being 10 pg/ml and 0.05 ng/ml for E2 and P4 respectively.</p>
+<p>For the V3 samples, plasma E2 and P4 levels were measured using electrochemiluminescence immunoassays (Roche Diagnostics) at the accredited Karolinska University Laboratory as previously described (Plos Pathogens peket). The LLDs for E2 and P4 were 22 pg/mL and 0.05 ng/mL, respectively. Values &lt;22 pg/mL (E2) and &lt;0.05 ng/mL (P4) were reported as “Below LLD”, but for statistical reasons they were assigned values of 22 pg/mL and 0.05 ng/mL for E2 and P4, respectively.</p>
+</div>
+</div>
+</div>
 <!-- ### Gene expression -->
 <!-- Gene expression counts were provided by BEA facility. -->
 <!-- -   BEA gene expression coding: BEA22P129_KB, run 2023-04 -->
@@ -151,13 +168,21 @@ More information: Support request
 <!-- - TMM normalization wass used for estimating relative RNA levels from the count data and normalized counts were $log2$ transformed.  -->
 <!-- - The normalized counts were used to examine the samples for outliers and relationships, using PCA. Association between PCA components and covariates was examined using linear regression model for numerical variables and using one-way ANOVA for categorical variables. -->
 <!-- - `edgeR` package was further used for association analysis between genes and E2 and P4 levels, adjusting for BV. Quasi-likelihood negative binomial generalized log-linear model was fitted to the data and gene-wise statistical test for a given coefficient (E2 or P4) was run to identify significant genes. P-values were adjusted for multiple testing using Benjamin & Hochberg procedure.  -->
-<!-- ## Results -->
-<!-- ### Data wrangling -->
-<!-- -   [prepare-data-sets.html](prepare-data-sets.html) -->
-<!-- ### EDA, exploratory data analysis -->
-<!-- -   [eda.html](eda.html) -->
-<!-- ### Statistical modelling -->
-<!-- -   [model.html](model.html) -->
+</section>
+</section>
+<section id="results" class="level2">
+<h2 class="anchored" data-anchor-id="results">Results</h2>
+<section id="data-wrangling" class="level3">
+<h3 class="anchored" data-anchor-id="data-wrangling">Data wrangling</h3>
+<ul>
+<li><a href="prepare-data-sets.html">prepare-data-sets.html</a></li>
+</ul>
+</section>
+<section id="eda-exploratory-data-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="eda-exploratory-data-analysis">EDA, exploratory data analysis</h3>
+<ul>
+<li><a href="eda.html">eda.html</a></li>
+</ul>
 </section>
 </section>
 

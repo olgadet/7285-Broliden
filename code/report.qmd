@@ -57,13 +57,13 @@ Key variables:
 -   Hormone levels: estradiol \[pg/ml\] and progesterone \[ng/ml\]
 
 
-<!-- ::: {.callout-note collapse="true"} -->
-<!-- ### More information: Plasma hormone analysis -->
+::: {.callout-note collapse="true"}
+### More information: Plasma hormone analysis
 
-<!-- Blood samples were collected by venipuncture using heparin as an anticoagulant, and plasma was isolated using a Ficoll density gradient. For the V2 samples, plasma levels for E2 and P4 were measured using the Milliplex Map Steroid/Thyroid Hormone Magnetic Bead Panel (Millipore, Merck, Darmstadt, Germany). The lower limits of detection for E2 and P4 were 20 pg/ml and 0.09 ng/ml respectively. Values below this were reported as "below Lower Limit of Detection" and were assigned a value of ½ LLD, being 10 pg/ml and 0.05 ng/ml for E2 and P4 respectively. -->
+Blood samples were collected by venipuncture using heparin as an anticoagulant, and plasma was isolated using a Ficoll density gradient. For the V2 samples, plasma levels for E2 and P4 were measured using the Milliplex Map Steroid/Thyroid Hormone Magnetic Bead Panel (Millipore, Merck, Darmstadt, Germany). The lower limits of detection for E2 and P4 were 20 pg/ml and 0.09 ng/ml respectively. Values below this were reported as "below Lower Limit of Detection" and were assigned a value of ½ LLD, being 10 pg/ml and 0.05 ng/ml for E2 and P4 respectively.
 
-<!-- For the V3 samples, plasma E2 and P4 levels were measured using electrochemiluminescence immunoassays (Roche Diagnostics) at the accredited Karolinska University Laboratory as previously described (Plos Pathogens peket). The LLDs for E2 and P4 were 22 pg/mL and 0.05 ng/mL, respectively. Values \<22 pg/mL (E2) and \<0.05 ng/mL (P4) were reported as "Below LLD", but for statistical reasons they were assigned values of 22 pg/mL and 0.05 ng/mL for E2 and P4, respectively. -->
-<!-- ::: -->
+For the V3 samples, plasma E2 and P4 levels were measured using electrochemiluminescence immunoassays (Roche Diagnostics) at the accredited Karolinska University Laboratory as previously described (Plos Pathogens peket). The LLDs for E2 and P4 were 22 pg/mL and 0.05 ng/mL, respectively. Values \<22 pg/mL (E2) and \<0.05 ng/mL (P4) were reported as "Below LLD", but for statistical reasons they were assigned values of 22 pg/mL and 0.05 ng/mL for E2 and P4, respectively.
+:::
 
 <!-- ### Gene expression -->
 
@@ -96,16 +96,14 @@ Key variables:
 <!-- - `edgeR` package was further used for association analysis between genes and E2 and P4 levels, adjusting for BV. Quasi-likelihood negative binomial generalized log-linear model was fitted to the data and gene-wise statistical test for a given coefficient (E2 or P4) was run to identify significant genes. P-values were adjusted for multiple testing using Benjamin & Hochberg procedure.  -->
 
 
-<!-- ## Results -->
+## Results
 
-<!-- ### Data wrangling -->
+### Data wrangling
 
-<!-- -   [prepare-data-sets.html](prepare-data-sets.html) -->
+-   [prepare-data-sets.html](prepare-data-sets.html)
 
-<!-- ### EDA, exploratory data analysis -->
+### EDA, exploratory data analysis
 
-<!-- -   [eda.html](eda.html) -->
+-   [eda.html](eda.html)
 
-<!-- ### Statistical modelling -->
 
-<!-- -   [model.html](model.html) -->

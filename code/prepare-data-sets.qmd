@@ -341,6 +341,69 @@ df_ensmbl_annotated <- df_genes %>%
 
 ```
 
+# Normalize count data
+```{r}
+
+# normalize data
+df_counts_v2 <- df_counts_matched_v2_renamed
+df_counts_v3 <- df_counts_matched_v3_renamed
+
+# convert data frame into count matrix
+cols_rm <- c("Chr", "Start", "End", "Strand", "Length")
+
+m_v2 <- df_counts_v2 %>%
+  dplyr::select(-all_of(cols_rm)) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix()
+
+m_v3 <- df_counts_v3 %>%
+  dplyr::select(-all_of(cols_rm)) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix()
+
+m_v2v3 <- df_counts_v2_v3 %>%
+  dplyr::select(-all_of(cols_rm)) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix()
+
+# create edgeR object
+data_cds_v2 <- DGEList(m_v2)
+data_cds_v3 <- DGEList(m_v3)
+data_cds_v2v3 <- DGEList(m_v2v3)
+
+# filter genes by expression level
+# keep <- filterByExpr(data_cds_v2, min.count = 10)
+keep <- filterByExpr(data_cds_v2)
+data_cds_v2 <- data_cds_v2[keep,,keep.lib.sizes=FALSE]
+
+keep <- filterByExpr(data_cds_v3)
+data_cds_v3 <- data_cds_v3[keep,,keep.lib.sizes=FALSE]
+
+keep <- filterByExpr(data_cds_v2v3)
+data_cds_v2v3 <- data_cds_v2v3[keep,,keep.lib.sizes=FALSE]
+
+# normalize
+data_cds_v2 <- calcNormFactors(data_cds_v2, method='TMM')
+data_norm_v2 <- cpm(data_cds_v2, prior.count=2, log=TRUE)
+
+data_cds_v3 <- calcNormFactors(data_cds_v3, method='TMM')
+data_norm_v3 <- cpm(data_cds_v3, prior.count=2, log=TRUE)
+
+data_cds_v2v3 <- calcNormFactors(data_cds_v2v3, method='TMM')
+data_norm_v2v3 <- cpm(data_cds_v2v3, prior.count=2, log=TRUE)
+
+counts_norm_v2 <- data_norm_v2 %>%
+  as_tibble(rownames = "gene")
+
+counts_norm_v3 <- data_norm_v3 %>%
+  as_tibble(rownames = "gene")
+
+counts_norm_v2v3 <- data_norm_v2v3 %>%
+  as_tibble(rownames = "gene")
+
+```
+
+
 # Save data
 ```{r}
 #| eval: false
@@ -376,6 +439,9 @@ write_csv(df_ensmbl_annotated, file = paste(dir_out, file_save, sep=""))
 
 # save final data sets to .RData
 file_save <- "data.RData"
-save(df_meta, df_meta_subset, df_counts_v2, df_counts_v3, df_counts_v2_v3, df_ensmbl_annotated, file = paste(dir_out, file_save, sep=""))
+save(df_meta, df_meta_subset, 
+     df_counts_v2, df_counts_v3, df_counts_v2_v3, 
+     df_ensmbl_annotated, 
+     counts_norm_v2, counts_norm_v3, counts_norm_v2v3, file = paste(dir_out, file_save, sep=""))
 ```
 

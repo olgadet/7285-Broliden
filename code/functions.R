@@ -23,6 +23,29 @@ func_pca <- function(x = m_v2, df_meta = df_meta_v2, n_loadings = 5){
   
 }
 
+func_pca_v2v3 <- function(x = m_v2, df_meta = df_clin_long, n_loadings = 5){
+  
+  # calculate pca
+  pca <- prcomp(t(x), center=TRUE, scale.=FALSE)
+  eigs <- pca$sdev^2
+  var_exp <- eigs / sum(eigs)
+  
+  # prepare data frame
+  df <- data.frame(PC1=pca$x[,1], PC2=pca$x[,2], PC3=pca$x[,3], PC4=pca$x[,4], PC5=pca$x[,5]) %>%
+    rownames_to_column("ID") %>% 
+    as_tibble() %>% 
+    left_join(df_meta, by = "ID") %>%
+    mutate(pca_var_exp = round(var_exp*100, 2)) 
+  
+  loadings <- pca$rotation
+  df_loadings <- loadings[, 1:n_loadings]
+  
+  
+  results <- list(scores = df, loadings = df_loadings)
+  
+  return(results)
+  
+}
 ##----func_plot_pca
 func_plot_pca <- function(pc_x = 1, pc_y = 2, df = pca_scores){
   
@@ -30,6 +53,13 @@ func_plot_pca <- function(pc_x = 1, pc_y = 2, df = pca_scores){
   var_y <- paste("PC", pc_y, sep="")
   lab_x <- paste(var_x, " (", round(df$pca_var_exp[pc_x], 2), "%)", sep="")
   lab_y <- paste(var_y, " (", round(df$pca_var_exp[pc_y], 2), "%)", sep="")
+  
+  df <- df %>%
+    mutate(PC1 = round(PC1, 2), 
+           PC2 = round(PC2, 2), 
+           PC3 = round(PC3, 2), 
+           PC4 = round(PC4, 2), 
+           PC5 = round(PC5, 2))
   
   plot <- df %>%
     ggplot(aes(x = !!ensym(var_x), y = !!ensym(var_y), label = PatID)) + 
@@ -41,7 +71,29 @@ func_plot_pca <- function(pc_x = 1, pc_y = 2, df = pca_scores){
   return(plot)
 }
 
-
+func_plot_pca_v2v3 <- function(pc_x = 1, pc_y = 2, df = pca_scores){
+  
+  var_x <- paste("PC", pc_x, sep="")
+  var_y <- paste("PC", pc_y, sep="")
+  lab_x <- paste(var_x, " (", round(df$pca_var_exp[pc_x], 2), "%)", sep="")
+  lab_y <- paste(var_y, " (", round(df$pca_var_exp[pc_y], 2), "%)", sep="")
+  
+  df <- df %>%
+    mutate(PC1 = round(PC1, 2), 
+           PC2 = round(PC2, 2), 
+           PC3 = round(PC3, 2), 
+           PC4 = round(PC4, 2), 
+           PC5 = round(PC5, 2))
+  
+  plot <- df %>%
+    ggplot(aes(x = !!ensym(var_x), y = !!ensym(var_y), label = ID)) + 
+    geom_point(shape = 21, size = 3, fill = mycols[2], alpha = 0.7) + 
+    xlab(lab_x) + 
+    ylab(lab_y) + 
+    theme_bw()
+  
+  return(plot)
+}
 
 func_plot_pca_by_num <- function(pc_x = 1, pc_y = 2, cov = "age", df = pca_scores){
   
@@ -86,25 +138,57 @@ func_plot_loadings <- function(pc = 1, ntop = 10, df_loadings, db = df_ensmbl_an
   
   pc <- paste("PC", pc, sep="")
   
+  # data_load <- df_loadings %>%
+  #   as.data.frame() %>%
+  #   rownames_to_column("ENSG") %>% 
+  #   as_tibble() %>% 
+  #   dplyr::select(all_of(c("ENSG", pc))) %>% 
+  #   mutate(pc_abs = abs(!!ensym(pc))) %>%
+  #   arrange(desc(pc_abs)) %>%
+  #   slice(1:ntop) 
+  # 
+  # load_annotate <- data_load %>%
+  #   left_join(db, by = c("ENSG" = "ensembl_gene_id")) %>%
+  #   arrange(pc_abs) %>%
+  #   mutate(gene = factor(gene, levels = gene))
+  # 
+  # plot <- 
+  #   load_annotate %>%
+  #   ggplot(aes(x=gene, y=pc_abs)) +
+  #   geom_segment( aes(x=gene, xend=gene, y=0, yend=pc_abs), color="skyblue") +
+  #   geom_point(color=inp.color, size=4, alpha=0.6) +
+  #   theme_light() +
+  #   coord_flip() +
+  #   theme(
+  #     panel.grid.major.y = element_blank(),
+  #     panel.border = element_blank(),
+  #     axis.ticks.y = element_blank()
+  #   ) + 
+  #   ylab("loadings") + 
+  #   xlab("")
+  
   data_load <- df_loadings %>%
     as.data.frame() %>%
     rownames_to_column("ENSG") %>% 
     as_tibble() %>% 
-    dplyr::select(all_of(c("ENSG", pc))) %>% #print()
+    dplyr::select(all_of(c("ENSG", pc))) %>% 
     mutate(pc_abs = abs(!!ensym(pc))) %>%
+    mutate(flag = ifelse(!!ensym(pc) > 0, "pos", "neg")) %>% 
+    mutate(flag = factor(flag)) %>% 
+    group_by(flag) %>% 
     arrange(desc(pc_abs)) %>%
-    slice(1:ntop) 
+    slice(1:ntop) %>%
+    ungroup() %>%
+    arrange(desc(pc_abs))
   
   load_annotate <- data_load %>%
     left_join(db, by = c("ENSG" = "ensembl_gene_id")) %>%
     arrange(pc_abs) %>%
     mutate(gene = factor(gene, levels = gene))
   
-  
-  plot <- 
-    load_annotate %>%
-    ggplot(aes(x=gene, y=pc_abs)) +
-    geom_segment( aes(x=gene, xend=gene, y=0, yend=pc_abs), color="skyblue") +
+  plot <- load_annotate %>%
+    ggplot(aes(x=gene, y=!!ensym(pc))) +
+    geom_segment( aes(x=gene, xend=gene, y=0, yend=!!ensym(pc)), color="skyblue") +
     geom_point(color=inp.color, size=4, alpha=0.6) +
     theme_light() +
     coord_flip() +
