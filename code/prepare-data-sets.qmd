@@ -5,6 +5,8 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 toc: true
 toc-expand: 3
 editor: source
+execute: 
+  cache: true
 editor_options: 
   chunk_output_type: console
 knitr:
@@ -27,17 +29,20 @@ library(tidyverse)
 library(readxl)
 library(DT)
 require(biomaRt)
+library(gtsummary)
+library(kableExtra)
 
 ```
 
 # Clinical data
-
 ```{r}
+#| label: load-data
 
 # load meta data
 file <- "../data/box/metadata_ updated FB 20230504_to OD.xlsx"
 df <- read_xlsx(file)
 
+# select columns
 cols_v2_v3 <- c("PatIDPx", "PatID", "age", 
              "BV_Diagnosis_v2...14", "Nugent_Score_v2",
              "BV_Diagnosis_v3...16", "Nugent_Score_v3",
@@ -47,6 +52,9 @@ cols_v2_v3 <- c("PatIDPx", "PatID", "age",
              "Plasma_S_Prog_ng_mL_v3",   "Below_LLD_P4_V3"
              )
 
+#Note: the lower limits of detection for E2 and P4 were 20 pg/ml and 0.09 ng/ml respectively. Values below this were reported as “below Lower Limit of Detection” and were assigned a value of ½ LLD, being 10 pg/ml and 0.05 ng/ml for E2 and P4 respectively.
+
+# format data in wide format
 df_clin <- df %>%
   dplyr::select(any_of(cols_v2_v3)) %>%
   rename(BV_v2 = `BV_Diagnosis_v2...14`, 
@@ -64,9 +72,9 @@ df_clin <- df %>%
          ) %>%
   mutate(PatID = as.character(PatID),
          age = as.numeric(age), 
-         BV_v2 = as.numeric(BV_v2), 
+         BV_v2 = as.factor(as.numeric(BV_v2)), 
          Nugent_v2 = as.numeric(Nugent_v2), 
-         BV_v3 = as.numeric(BV_v3), 
+         BV_v3 = as.factor(as.numeric(BV_v3)), 
          Nugent_v3 = as.numeric(Nugent_v3), 
          E2_v2 = as.numeric(E2_v2), 
          P4_v2 = as.numeric(P4_v2), 
@@ -76,66 +84,53 @@ df_clin <- df %>%
          below_LLD_P4_v2 = factor(below_LLD_P4_v2, levels = c("no", "yes", NA)), 
          below_LLD_E2_v3 = factor(below_LLD_E2_v3, levels = c("no", "yes", NA)), 
          below_LLD_P4_v3 = factor(below_LLD_P4_v3, levels = c("no", "yes", NA)), 
-         ) 
-  
+         ) %>%
+  mutate(E2_v2 = ifelse(below_LLD_E2_v2 == "yes", 10, E2_v2), 
+         E2_v3 = ifelse(below_LLD_E2_v3 == "yes", 10, E2_v3), 
+         P4_v2 = ifelse(below_LLD_P4_v2 == "yes", 0.05, P4_v2), 
+         P4_v3 = ifelse(below_LLD_P4_v2 == "yes", 0.05, P4_v3))
 ```
 
+```{r}
+#| label: tbl-BV-samples
+#| tbl-cap: "Number of samples by BV characteristics in V2 and V3 (all samples available in meta data)."
+#| results: asis
+
+df_BV <- df_clin %>%
+  dplyr::select(PatID, BV_v2, BV_v3) %>%
+  pivot_longer(!PatID, names_to = "V", values_to = "BV") %>%
+  mutate(V = ifelse(V == "BV_v2", "V2", "V3"))
+
+df_BV %>%
+  dplyr::select(!PatID) %>%
+  tbl_summary(by = V, 
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
 
 ```{r}
+#| label: tbl-BV-samples-na-rm
+#| tbl-cap: "Number of samples by BV characteristics in V2 and V3 (samples with missing BV entries removed)."
+#| results: asis
 
-# How many samples have matching V2 and V3 entries
-# and how many with BV complete measurements
-
-df_clin %>%
-  dplyr::select(PatID, age, BV_v2, BV_v3) %>%
-  dim()
-
-df_clin %>%
-  dplyr::select(PatID, age, BV_v2, BV_v3) %>%
+df_BV <- df_clin %>%
+  dplyr::select(PatID, BV_v2, BV_v3) %>%
   na.omit() %>%
-  dim()
+  pivot_longer(!PatID, names_to = "V", values_to = "BV") %>%
+  mutate(V = ifelse(V == "BV_v2", "V2", "V3"))
 
-#TODO: update below LLD values for E2 and P4 and double-check numbers
-df_clin %>%
-  #dplyr::select(PatID, age, BV_v2, BV_v3) %>%
-  na.omit() %>%
-  dim()
-
-#TODO: check corresponding count data, tabulate set for analyses
-```
-
-
-
-```{r}
-# preview relevant clinical data for V2
-df_meta_v2 %>%
-  head() %>%
-  datatable(caption = paste("Preview of the relevant clinical data for V2 samples: ", nrow(df_meta_v2), " samples and ", ncol(df_meta_v2), " variables.", sep="")) %>%
-  formatSignif(columns = c("E2", "P4"), digits = 3)
-
-df_meta_v3 %>%
-  head() %>%
-  datatable(caption = paste("Preview of the relevant clinical data for V3 samples: ", nrow(df_meta_v3), " samples and ", ncol(df_meta_v3), " variables.", sep="")) %>%
-  formatSignif(columns = c("E2", "P4"), digits = 3)
-```
-
-
-
-```{r}
-# udate P4 LLD values to 0.05
-# email 2023-05-29
-# As a follow up on our discussion last week: Let’s use two decimal points for progesterone (P4), that would mean that LLD is 0.05 for both V2 and V3 (previously V3: 0.0503 and V2: 0.045), then we are consistent with the rest of the manuscript
-
-df_meta_v2 <- df_meta_v2 %>%
-  mutate(P4 = ifelse(below_LLD_P4 == "yes", 0.05, P4))
-
-df_meta_v3 <- df_meta_v3 %>%
-  mutate(P4 = ifelse(below_LLD_P4 == "yes", 0.05, P4))
+df_BV %>%
+  dplyr::select(!PatID) %>%
+  tbl_summary(by = V, 
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
 
 ```
 
 # Count data
-
 ```{r}
 # load count data
 file_counts_v2 <- "../data/raw/BEA22P129_KB/counts/subreadCounts_hg38ens_minus_frag.txt"
@@ -156,27 +151,102 @@ file <- "../data/box/KEY_V2_BEA22P129_KB_samples_.xlsx"
 df_keys_v2 <- read_xlsx(file)
 df_keys_v2 <- df_keys_v2 %>%
   dplyr::select(File, PatID) %>%
-  rename(count_file = File) %>%
+  rename(countfile_v2 = File) %>%
   mutate(PatID = as.character(PatID))
 
 file <- "../data/box/KEY_V3_BEA19P035_KB_samples-modified-filled-in-missing-PatID3943.xlsx"
 df_keys_v3 <- read_xlsx(file)
 df_keys_v3 <- df_keys_v3 %>%
   dplyr::select(File, PatID) %>%
-  rename(count_file = File) %>%
+  rename(countfile_v3 = File) %>%
   mutate(PatID = as.character(PatID))
 
-# add key data to df_meta
-df_meta_keys_v2 <- df_meta_v2 %>%
-  left_join(df_keys_v2)
+# add key data to df_clin
+df_meta <- df_clin %>%
+  left_join(df_keys_v2) %>%
+  left_join(df_keys_v3) %>%
+  mutate(countflag_v2v3 = ifelse(is.na(countfile_v2) | is.na(countfile_v3), 0, 1)) 
 
-df_meta_keys_v3 <- df_meta_v3 %>%
-  left_join(df_keys_v3)
+```
+
+
+```{r}
+#| label: tbl-BV-samples-na-rm-v2
+#| tbl-cap: "Number of samples by BV characteristics in V2, for which both BV and RNA-seq count data are available."
+#| results: asis
+
+df_BV <- df_meta %>%
+  dplyr::select(PatID, BV_v2, countfile_v2) %>% 
+  na.omit() %>%
+  dplyr::select(!countfile_v2) %>%
+  pivot_longer(!c(PatID), names_to = "V", values_to = "BV") %>% 
+  mutate(V = ifelse(V == "BV_v2", "V2", "V3")) 
+
+df_BV %>%
+  dplyr::select(!PatID) %>%
+  tbl_summary(by = V, 
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
+
+
+```{r}
+#| label: tbl-BV-samples-na-rm-v3
+#| tbl-cap: "Number of samples by BV characteristics in V3, for which both BV and RNA-seq count data are available."
+#| results: asis
+
+df_BV <- df_meta %>%
+  dplyr::select(PatID, BV_v3, countfile_v3) %>% 
+  na.omit() %>%
+  dplyr::select(!countfile_v3) %>%
+  pivot_longer(!c(PatID), names_to = "V", values_to = "BV") %>% 
+  mutate(V = ifelse(V == "BV_v2", "V2", "V3")) 
+
+df_BV %>%
+  dplyr::select(!PatID) %>%
+  tbl_summary(by = V, 
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-BV-samples-na-rm-v2-v3
+#| tbl-cap: "Number of samples by BV characteristics in V2 and V3, for which both BV and RNA-seq count data are available at both V2 and V3."
+#| results: asis
+
+df_BV <- df_meta %>%
+  dplyr::select(PatID, BV_v2, BV_v3, countfile_v2, countfile_v3) %>% 
+  na.omit() %>%
+  dplyr::select(!c(countfile_v2, countfile_v3)) %>%
+  pivot_longer(!c(PatID), names_to = "V", values_to = "BV") %>% 
+  mutate(V = ifelse(V == "BV_v2", "V2", "V3")) 
+
+df_BV %>%
+  dplyr::select(!PatID) %>%
+  tbl_summary(by = V, 
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
+
+# Subset count data
+```{r}
+#| include: true
+#| eval: true
 
 # select matching count data to clinical data
+df_meta_subset <- df_meta %>%
+  dplyr::select(PatID, PatIDPx, BV_v2, BV_v3, countfile_v2, countfile_v3) %>%
+  na.omit()
+  
 cols_geneinfo <- c("Geneid",  "Chr", "Start", "End", "Strand", "Length")
-cols_v2 <- c(cols_geneinfo, df_meta_keys_v2$count_file)
-cols_v3 <- c(cols_geneinfo, df_meta_keys_v3$count_file)
+cols_v2 <- c(cols_geneinfo, df_meta_subset$countfile_v2)
+cols_v3 <- c(cols_geneinfo, df_meta_subset$countfile_v3)
 
 df_counts_matched_v2 <- df_counts_v2 %>%
   dplyr::select(all_of(cols_v2))
@@ -184,7 +254,7 @@ df_counts_matched_v2 <- df_counts_v2 %>%
 df_counts_matched_v3 <- df_counts_v3 %>%
   dplyr::select(all_of(cols_v3))
 
-# # check dimensions
+# check dimensions
 # dim(df_counts_matched_v2)
 # dim(df_counts_matched_v3)
 
@@ -193,45 +263,57 @@ df_counts_matched_v3 <- df_counts_v3 %>%
 # colnames(df_counts_matched_v3) == cols_v3
 
 # change count column names to PatID (V2)
-df_columns_v2 <- data.frame(count_file = cols_v2) 
+df_columns_v2 <- data.frame(countfile_v2 = cols_v2)
 df_columns_v2 <- df_columns_v2 %>%
-  left_join(df_meta_keys_v2) %>%
-  dplyr::select(all_of(c("count_file", "PatIDPx", "PatID"))) %>%
-  mutate(columns_new = ifelse(is.na(PatID) == TRUE, count_file, PatID)) 
+  left_join(df_meta_subset[, c("PatID", "countfile_v2")]) %>% 
+  mutate(columns_new = ifelse(is.na(PatID), countfile_v2, PatID))
 
-colnames(df_counts_matched_v2) <- df_columns_v2$columns_new
+df_counts_matched_v2_renamed <- df_counts_matched_v2
+colnames(df_counts_matched_v2_renamed) <- df_columns_v2$columns_new
 
 # change count column names to PatID (V3)
-df_columns_v3 <- data.frame(count_file = cols_v3) 
+df_columns_v3 <- data.frame(countfile_v3 = cols_v3)
 df_columns_v3 <- df_columns_v3 %>%
-  left_join(df_meta_keys_v3) %>%
-  dplyr::select(all_of(c("count_file", "PatIDPx", "PatID"))) %>%
-  mutate(columns_new = ifelse(is.na(PatID) == TRUE, count_file, PatID)) 
+  left_join(df_meta_subset[, c("PatID", "countfile_v3")]) %>% 
+  mutate(columns_new = ifelse(is.na(PatID), countfile_v3, PatID))
 
-colnames(df_counts_matched_v3) <- df_columns_v3$columns_new
+df_counts_matched_v3_renamed <- df_counts_matched_v3
+colnames(df_counts_matched_v3_renamed) <- df_columns_v3$columns_new
+
+# combine V2 and V3 count data
+df_counts_v2_v3 <- df_counts_matched_v2_renamed %>%
+  left_join(df_counts_matched_v3_renamed, by = cols_geneinfo, suffix = c("_V2", "_V3"))
 
 # preview count data
-df_counts_matched_v2 %>%
+df_counts_matched_v2_renamed %>%
   dplyr::select(-c("Chr", "Start", "End", "Strand", "Length")) %>%
   dplyr::select(1:11) %>%
   head() %>%
   datatable(caption = paste("Preview of the count data corresponding to V2 samples: ", nrow(df_counts_v2), " genes", sep=""))
 
-df_counts_matched_v3 %>%
+df_counts_matched_v3_renamed %>%
   dplyr::select(-c("Chr", "Start", "End", "Strand", "Length")) %>%
   dplyr::select(1:11) %>%
   head() %>%
   datatable(caption = paste("Preview of the count data corresponding to V3 samples: ", nrow(df_counts_v3), " genes", sep=""))
 
+df_counts_v2_v3 %>%
+  dplyr::select(-c("Chr", "Start", "End", "Strand", "Length")) %>%
+  dplyr::select(c(1:11, 100 : 110)) %>%
+  head() %>%
+  datatable(caption = paste("Preview of the combined V2 and V3 count data: ", nrow(df_counts_v3), " genes", sep=""))
+
 ```
 
+
 # Annotation data
-
 ```{r}
+#| include: true
+#| eval: false
 
-## Use Ensembl 
-#ensembl = useMart("ensembl")
-#listDatasets(ensembl)
+## Use Ensembl
+ensembl = useMart("ensembl")
+# listDatasets(ensembl)
 
 # as the main Ensembl portal is currently unavailable, one needs to specify alternative portal e.g. jul2015.archive.ensembl.org
 ensemble_mart=useMart(biomart="ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ensembl")#, host = "jul2015.archive.ensembl.org")
@@ -243,45 +325,42 @@ ensemble_mart=useMart(biomart="ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ens
 ## save attritbutes to the file
 # write.table(listAttributes(ensemble.mart), file='../data/processed/listAttributes.txt', sep='\t', quote=F, row.names=F, col.names=F)
 
-
 ## Retrieving data frame for the selected attributes
-my_attributes <- c("ensembl_gene_id", "entrezgene_id", "chromosome_name", "start_position",  "end_position", "strand", "hgnc_symbol", "external_gene_name", "description", "gene_biotype")      
+my_attributes <- c("ensembl_gene_id", "entrezgene_id", "chromosome_name", "start_position",  "end_position", "strand", "hgnc_symbol", "external_gene_name", "description", "gene_biotype")
 df_ensembl <- getBM(attributes=my_attributes, mart=ensemble_mart)
 
 ## Add information to the ensemble genes
 ## Genes to annotate
 
-df_genes <- tibble(ensembl_gene_id = df_counts_v2$Geneid)
+df_genes <- tibble(ensembl_gene_id = df_counts_v2_v3$Geneid)
 
 df_ensmbl_annotated <- df_genes %>%
-  left_join(df_ensembl) %>% 
+  left_join(df_ensembl) %>%
   distinct(ensembl_gene_id, .keep_all = TRUE) %>%
   mutate(gene = paste(hgnc_symbol, "@", ensembl_gene_id, sep=""))
 
 ```
 
 # Save data
-
 ```{r}
 #| eval: false
+#| include: true
 #| code-fold: show
 
 # directory
 dir_out <- "../data/processed/"
 
 # rename final data sets
-df_meta_v2 <- df_meta_keys_v2
-df_meta_v3 <- df_meta_keys_v3
+# df_meta
+# df_meta_subset
 
-df_counts_v2 <- df_counts_matched_v2
-df_counts_v3 <- df_counts_matched_v3
+df_counts_v2 <- df_counts_matched_v2_renamed
+df_counts_v3 <- df_counts_matched_v3_renamed
+#df_counts_v2_v3
 
 # save final data sets to separate .csv files
-file_save <- "df_meta_v2.csv"
-write_csv(df_meta_v2, file = paste(dir_out, file_save, sep =""))
-
-file_save <- "df_meta_v3.csv"
-write_csv(df_meta_v3, file = paste(dir_out, file_save, sep =""))
+file_save <- "df_meta.csv"
+write_csv(df_meta, file = paste(dir_out, file_save, sep =""))
 
 file_save <- "df_counts_v2.csv"
 write_csv(df_counts_v2, file = paste(dir_out, file_save, sep =""))
@@ -289,16 +368,14 @@ write_csv(df_counts_v2, file = paste(dir_out, file_save, sep =""))
 file_save <- "df_counts_v3.csv"
 write_csv(df_counts_v3, file = paste(dir_out, file_save, sep =""))
 
+file_save <- "df_counts_v2_v3.csv"
+write_csv(df_counts_v2_v3, file = paste(dir_out, file_save, sep =""))
+
 file_save <- "df_ensembl_annotated.csv"
 write_csv(df_ensmbl_annotated, file = paste(dir_out, file_save, sep=""))
 
 # save final data sets to .RData
 file_save <- "data.RData"
-save(df_meta_v2, df_meta_v3, df_counts_v2, df_counts_v3, df_ensmbl_annotated, file = paste(dir_out, file_save, sep=""))
+save(df_meta, df_meta_subset, df_counts_v2, df_counts_v3, df_counts_v2_v3, df_ensmbl_annotated, file = paste(dir_out, file_save, sep=""))
 ```
 
-# Conclusions & comments
-
--   All samples, V2 (n = 58) and V3 (n = 66), were positively identified in among the files containing clinical information.
--   Corresponding raw count data were extracted successfully from the data delivered by BEA.
--   The relevant clinical and count data were saved to separate .csv files as well as together into .RData file.

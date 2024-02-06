@@ -1,0 +1,1237 @@
+---
+title: "Exploratory data analysis"
+format: html
+date: "`r format(Sys.time(), '%d %B, %Y')`"    
+toc: true
+toc-expand: 3
+editor: source
+editor_options: 
+  chunk_output_type: console
+knitr:
+  opts_chunk: 
+    echo: true
+    message: false
+    warning: false
+    code-fold: true
+    include: true
+    collapse: true
+---
+
+```{r}
+#| label: setup-env
+
+# Set-up R environment
+rm(list=ls())
+
+library(tidyverse)
+library(readxl)
+library(DT)
+library(arsenal)
+library(RColorBrewer)
+library(edgeR)
+library(plotly)
+library(kableExtra)
+library(ggpmisc)
+
+# load functions
+source("functions.R")
+
+# load data
+file <- "../data/processed/data.RData"
+load(file)
+
+mycols <- brewer.pal(6, "Set1")
+
+```
+
+# Clinical data
+
+```{r}
+#| results: asis
+#| label: tbl-clin
+#| tbl-cap: "Summary statistics of the clinical variables."
+
+# combine V2 and V3 into on data frame
+df_meta_v2 <- df_meta_v2 %>%
+  mutate(V = "V2")
+
+df_meta_v3 <- df_meta_v3 %>%
+  mutate(V = "V3")
+
+df_meta <- rbind(df_meta_v2, df_meta_v3)
+
+# summary table by V phase
+mycontrols  <- tableby.control(test=TRUE, total=FALSE,
+                               numeric.stats=c("meansd","median", "q1q3", "range"),
+                               cat.stats=c("countpct"))
+
+tab1 <- tableby(V ~ E2 + below_LLD_E2 + P4 + below_LLD_P4 + age + BV, data=df_meta, control = mycontrols, 
+                digits=2, digits.p=2, digits.pct=1)
+labels(tab1) <- c(age = "age, years", E2 = "E2, pg/ml", P4 = "P4, ng/ml")
+
+
+summary(tab1, pfootnote=TRUE)
+
+```
+
+## Distributions
+
+::: panel-tabset
+### E2
+
+```{r}
+#| label: fig-E2
+#| fig-cap: Histogram of estradiol levels, E2, pg/ml.
+#| fig-pos: center
+
+# E2
+df_meta %>%
+  ggplot(aes(x = E2)) + 
+  geom_histogram(bins = 25, color = "black", fill = mycols[2], alpha = 0.6) + 
+  facet_wrap(~V) + 
+  theme_bw() + 
+  xlab("E2, pg/ml")
+  
+```
+
+### P4
+
+```{r}
+#| label: fig-P4
+#| fig-cap: Histogram of progestrone levels, P4, ng/ml.
+#| fig-pos: center
+
+mycols <- brewer.pal(6, "Set1")
+
+# E2
+df_meta %>%
+  ggplot(aes(x = P4)) + 
+  geom_histogram(bins = 25, color = "black", fill = mycols[2], alpha = 0.6) + 
+  facet_wrap(~V) + 
+  theme_bw() + 
+  xlab("P4, ng/ml")
+  
+```
+
+### age
+
+```{r}
+#| label: fig-age
+#| fig-cap: Histogram of age values, years.
+#| fig-pos: center
+
+mycols <- brewer.pal(6, "Set1")
+
+# E2
+df_meta %>%
+  ggplot(aes(x = age)) + 
+  geom_histogram(bins = 25, color = "black", fill = mycols[2], alpha = 0.6) + 
+  facet_wrap(~V) + 
+  theme_bw() + 
+  xlab("age, yr")
+  
+```
+:::
+
+# Count data
+
+```{r}
+# create edgeR object
+
+# convert data frame into count matrix
+cols_rm <- c("Chr", "Start", "End", "Strand", "Length")
+
+m_v2 <- df_counts_v2 %>%
+  dplyr::select(-all_of(cols_rm)) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix()
+
+m_v3 <- df_counts_v3 %>%
+  dplyr::select(-all_of(cols_rm)) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix()
+
+# create edgeR object
+data_cds_v2 <- DGEList(m_v2)
+data_cds_v3 <- DGEList(m_v3)
+
+# filter genes by expression level
+# keep <- filterByExpr(data_cds_v2, min.count = 10)
+keep <- filterByExpr(data_cds_v2, min.count = 10)
+#summary(keep)
+#keep.2 <- filterByExpr(data_cds_v2, min.count = 10, min.prop = 0.8)
+#summary(keep.2)
+
+data_cds_v2 <- data_cds_v2[keep,,keep.lib.sizes=FALSE]
+
+keep <- filterByExpr(data_cds_v3)
+data_cds_v3 <- data_cds_v3[keep,,keep.lib.sizes=FALSE]
+
+# normalize
+data_cds_v2 <- calcNormFactors(data_cds_v2, method='TMM')
+data_norm_v2 <- cpm(data_cds_v2, prior.count=2, log=TRUE)
+
+data_cds_v3 <- calcNormFactors(data_cds_v3, method='TMM')
+data_norm_v3 <- cpm(data_cds_v3, prior.count=2, log=TRUE)
+
+counts_norm_v2 <- data_norm_v2 %>%
+  as_tibble(rownames = "gene")
+
+counts_norm_v3 <- data_norm_v3 %>%
+  as_tibble(rownames = "gene")
+
+write_csv(counts_norm_v2, file = "../results/counts-norm-v2.csv")
+write_csv(counts_norm_v3, file = "../results/counts-norm-v3.csv")
+
+
+```
+
+## Raw counts
+
+```{r}
+# run PCA on raw and normalized counts
+pca_raw_v2 <- func_pca(m_v2, df_meta_v2)
+pca_raw_v3 <- func_pca(m_v3, df_meta_v3)
+
+```
+
+::: panel-tabset
+### PC1 vs. PC2 (V2)
+
+```{r}
+#| label: fig-pca-raw-v2_12
+#| fig-cap: "PCA scores plots based on raw counts."
+#| fig-width: 4
+#| fig-height: 4
+
+pca_scores <- pca_raw_v2$scores
+plot <- func_plot_pca(1, 2, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC3 (V2)
+
+```{r}
+#| label: fig-pca-raw-v2_13
+#| fig-cap: "PCA scores plots based on raw counts."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 3, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC2 (V3)
+
+```{r}
+#| label: fig-pca-raw-v3_12
+#| fig-cap: "PCA scores plots based on raw counts."
+#| fig-width: 4
+#| fig-height: 4
+
+pca_scores <- pca_raw_v3$scores
+plot <- func_plot_pca(1, 2, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC3 (V3)
+
+```{r}
+#| label: fig-pca-raw-v3_13
+#| fig-cap: "PCA scores plots based on raw counts."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 3, df = pca_scores)
+ggplotly(plot)
+
+```
+:::
+
+## Normalized counts (V2)
+
+```{r}
+pca_norm_v2 <- func_pca(data_norm_v2, df_meta_v2)
+```
+
+### PCA scores plot
+
+::: panel-tabset
+### PC1 vs. PC2
+
+```{r}
+#| label: fig-pca-norm-v2_12
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+pca_scores <- pca_norm_v2$scores
+plot <- func_plot_pca(1, 2, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC3
+
+```{r}
+#| label: fig-pca-norm-v2_13
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 3, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC2 vs. PC3
+
+```{r}
+#| label: fig-pca-norm-v2_23
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+#| 
+plot <- func_plot_pca(2, 3, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC4
+
+```{r}
+#| label: fig-pca-norm-v2_14
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 4, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC5
+
+```{r}
+#| label: fig-pca-norm-v2_15
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 5, df = pca_scores)
+ggplotly(plot)
+
+```
+:::
+
+### Loadings plots
+
+::: panel-tabset
+### PC1
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+
+ld <- pca_norm_v2$loadings
+func_plot_loadings(pc = 1, df_loadings = ld)
+
+```
+
+### PC2
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 2, df_loadings = ld)
+```
+
+### PC3
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 3, df_loadings = ld)
+
+```
+
+### PC4
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 4, df_loadings = ld)
+
+```
+
+### PC5
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 5, df_loadings = ld)
+```
+:::
+
+### E2, P4, Age and BV
+
+::: panel-tabset
+### Age
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 2, cov = "age", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+
+```
+
+### Age (PC1 vs PC5)
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 5, cov = "age", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### E2
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 2, cov = "E2", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### P4
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 2, cov = "P4", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### P4 (PC1 vs. PC4)
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 4, cov = "P4", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### BV
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 2, cov = "BV", pca_scores)
+ggplotly(plot)
+```
+
+### BV (PC1 vs. PC4)
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 4, cov = "BV", pca_scores)
+ggplotly(plot)
+```
+
+### below LLD E2
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 2, cov = "below_LLD_E2", pca_scores)
+ggplotly(plot)
+```
+
+### below LLD P4
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 2, cov = "below_LLD_P4", pca_scores)
+ggplotly(plot)
+```
+
+### below LLD P4 (PC1 vs. PC5)
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 5, cov = "below_LLD_P4", pca_scores)
+ggplotly(plot)
+```
+:::
+
+```{r}
+#| label: tbl-asso-pca-v2
+#| results: asis
+#| tbl-cap: "Association between PCA components and covariates; p-values from linear regression model for numerical variables and based on one-way ANOVA for categorical variables."
+
+df <- pca_scores
+covs <- c("age", "E2", "P4", "BV", "below_LLD_E2", "below_LLD_P4")
+covs_num <- c(1, 1, 1, 0, 0, 0)
+no_pca <- 5
+
+m_pvalues <- matrix(data = NA, nrow = length(covs), ncol = no_pca)
+
+for (ivar in 1:length(covs)){
+  
+  
+  if (covs_num[ivar] == 1){ # linear regression for numerical variables and PC components
+    
+    # tmp covariate such as age
+    cov <- covs[ivar]
+  
+    for (j in 1:no_pca){
+      
+     f <- paste(cov, " ~ ", "PC", j, sep="")
+     f <- as.formula(f)
+     
+     m <- lm(f, data = df)
+     m_pvalues[ivar, j] <- summary(m)$coefficient[2, 4]
+     
+    }
+  }
+
+  
+    if (covs_num[ivar] == 0){ # ANOVA
+    
+    # tmp covariate such as age
+    cov <- covs[ivar]
+  
+    for (j in 1:no_pca){
+      
+     f <- paste("PC", j, " ~ ", cov, sep="")
+     f <- as.formula(f)
+     
+     m <- aov(f, data = df)
+     
+  
+     m_pvalues[ivar, j] <- summary(m)[[1]][["Pr(>F)"]][1]
+     
+    }
+  }
+  
+}
+
+colnames(m_pvalues) <- paste("PC", 1:ncol(m_pvalues), sep="")
+rownames(m_pvalues) <- covs
+
+
+df_pvalues <- data.frame(round(m_pvalues, 2))
+df_pvalues %>%
+  kbl(booktabs = T, linesep = "", escape=FALSE) %>%
+  kable_paper(full_width = F) %>%
+  column_spec(2, background = ifelse(df_pvalues$PC1 < 0.05, "red", "white")) %>%
+  column_spec(3, background = ifelse(df_pvalues$PC2 < 0.05, "red", "white")) %>%
+  column_spec(4, background = ifelse(df_pvalues$PC3 < 0.05, "red", "white")) %>%
+  column_spec(5, background = ifelse(df_pvalues$PC4 < 0.05, "red", "white")) %>%
+  column_spec(6, background = ifelse(df_pvalues$PC5 < 0.05, "red", "white"))
+  
+```
+
+## Normalized counts (V3)
+
+```{r}
+pca_norm_v3 <- func_pca(data_norm_v3, df_meta_v3)
+```
+
+### PCA scores plot
+
+::: panel-tabset
+### PC1 vs. PC2
+
+```{r}
+#| label: fig-pca-norm-v3_12
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+pca_scores <- pca_norm_v3$scores
+plot <- func_plot_pca(1, 2, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC3
+
+```{r}
+#| label: fig-pca-norm-v3_13
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 3, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC2 vs. PC3
+
+```{r}
+#| label: fig-pca-norm-v3_23
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+#| 
+plot <- func_plot_pca(2, 3, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC4
+
+```{r}
+#| label: fig-pca-norm-v3_14
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 4, df = pca_scores)
+ggplotly(plot)
+
+```
+
+### PC1 vs. PC5
+
+```{r}
+#| label: fig-pca-norm-v3_15
+#| fig-cap: "PCA scores plots based on normalized values."
+#| fig-width: 4
+#| fig-height: 4
+
+plot <- func_plot_pca(1, 5, df = pca_scores)
+ggplotly(plot)
+
+```
+:::
+
+### Loadings plots
+
+::: panel-tabset
+### PC1
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+
+ld <- pca_norm_v3$loadings
+func_plot_loadings(pc = 1, df_loadings = ld)
+
+```
+
+### PC2
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 2, df_loadings = ld)
+```
+
+### PC3
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 3, df_loadings = ld)
+
+```
+
+### PC4
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 4, df_loadings = ld)
+
+```
+
+### PC5
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+func_plot_loadings(pc = 5, df_loadings = ld)
+```
+:::
+
+### E2, P4, Age and BV
+
+::: panel-tabset
+### Age
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 2, cov = "age", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### E2
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 2, cov = "E2", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### E2 (PC1 vs. PC3)
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 3, cov = "E2", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### P4
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_num(1, 2, cov = "P4", pca_scores)
+ggplotly(p, tooltip = c("x", "y", "PatID", "fill"))
+```
+
+### BV
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_cat(1, 2, cov = "BV", pca_scores)
+ggplotly(p)
+
+```
+
+### BV (PC1 vs. PC5)
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_cat(1, 5, cov = "BV", pca_scores)
+ggplotly(p)
+```
+
+### below LLD E2
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_cat(1, 2, cov = "below_LLD_E2", pca_scores)
+ggplotly(p)
+```
+
+### below LLD P4
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+p <- func_plot_pca_by_cat(1, 2, cov = "below_LLD_P4", pca_scores)
+ggplotly(p)
+```
+:::
+
+```{r}
+#| label: tbl-asso-pca-v3
+#| results: asis
+#| tbl-cap: "Association between PCA components and covariates; p-values from linear regression model for numerical variables and based on one-way ANOVA for categorical variables."
+
+df <- pca_scores
+covs <- c("age", "E2", "P4", "BV", "below_LLD_E2", "below_LLD_P4")
+covs_num <- c(1, 1, 1, 0, 0, 0)
+no_pca <- 5
+
+m_pvalues <- matrix(data = NA, nrow = length(covs), ncol = no_pca)
+
+for (ivar in 1:length(covs)){
+  
+  
+  if (covs_num[ivar] == 1){ # linear regression for numerical variables and PC components
+    
+    # tmp covariate such as age
+    cov <- covs[ivar]
+  
+    for (j in 1:no_pca){
+      
+     f <- paste(cov, " ~ ", "PC", j, sep="")
+     f <- as.formula(f)
+     
+     m <- lm(f, data = df)
+     m_pvalues[ivar, j] <- summary(m)$coefficient[2, 4]
+     
+    }
+  }
+
+  
+    if (covs_num[ivar] == 0){ # ANOVA
+    
+    # tmp covariate such as age
+    cov <- covs[ivar]
+  
+    for (j in 1:no_pca){
+      
+     f <- paste("PC", j, " ~ ", cov, sep="")
+     f <- as.formula(f)
+     
+     m <- aov(f, data = df)
+     
+  
+     m_pvalues[ivar, j] <- summary(m)[[1]][["Pr(>F)"]][1]
+     
+    }
+  }
+  
+}
+
+colnames(m_pvalues) <- paste("PC", 1:ncol(m_pvalues), sep="")
+rownames(m_pvalues) <- covs
+
+df_pvalues <- data.frame(round(m_pvalues, 2))
+df_pvalues %>%
+  kbl(booktabs = T, linesep = "", escape=FALSE) %>%
+  kable_paper(full_width = F) %>%
+  column_spec(2, background = ifelse(df_pvalues$PC1 < 0.05, "red", "white")) %>%
+  column_spec(3, background = ifelse(df_pvalues$PC2 < 0.05, "red", "white")) %>%
+  column_spec(4, background = ifelse(df_pvalues$PC3 < 0.05, "red", "white")) %>%
+  column_spec(5, background = ifelse(df_pvalues$PC4 < 0.05, "red", "white")) %>%
+  column_spec(6, background = ifelse(df_pvalues$PC5 < 0.05, "red", "white"))
+  
+```
+
+# Genes of interest
+
+## V2
+
+```{r}
+
+genes_ofi <- c("DSG1", "ESR1", "PGR", "RPTN", "KRT1", "KRT2", "KRT10", "KRT76", "CDH1")
+
+data_norm <- data_norm_v2
+data_meta <- df_meta_v2
+
+genes_ofi_ensg <- df_ensmbl_annotated %>%
+  filter(hgnc_symbol %in% genes_ofi) %>%
+  dplyr::select(ensembl_gene_id, hgnc_symbol) %>%
+  rename(ENSG = ensembl_gene_id)
+
+df_genes_ofi <- data_norm[genes_ofi_ensg$ENSG, ] %>%
+  as_tibble(rownames = "ENSG") %>% 
+  pivot_longer(-ENSG, names_to = "PatID", values_to = "CPM") %>%
+  left_join(data_meta) %>% 
+  left_join(genes_ofi_ensg) %>% 
+  mutate(hgnc_symbol = factor(hgnc_symbol, levels = genes_ofi)) %>%
+  print()
+  
+```
+
+::: panel-tabset
+## Distribution
+
+```{r}
+#| label: fig-genes-ofi-dist-v02
+#| fig-cap: "Distribution of normalized CPM values for the genes of interest."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 5
+
+cpm_min_v2 <- min(apply(data_norm_v2, 1, min)) %>% round(2)
+cpm_max_v2 <- max(apply(data_norm_v2, 1, max)) %>% round(2)
+
+# box plot
+df_genes_ofi %>%
+  ggplot(aes(x = hgnc_symbol, y = CPM)) + 
+  geom_jitter(width = 0.2, alpha = 0.5) + 
+  geom_boxplot(alpha = 0) + 
+  theme_bw() + 
+  xlab("") + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12)) + 
+  ylim(c(cpm_min_v2, cpm_max_v2))
+
+```
+
+Range of normalized CPM values is from `r cpm_min_v2` to `r cpm_max_v2`.
+
+## CPM vs. E2
+
+```{r}
+#| label: fig-genes-ofi-E2-v02
+#| fig-cap: "Normalized CPM values as a function of E2."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 12
+
+
+df_genes_ofi %>%
+  ggplot(aes(x = E2, y = CPM)) +
+  stat_poly_line(se = FALSE) + 
+  stat_poly_eq(label.y = 0.1, use_label(c("eq"))) + 
+  stat_poly_eq(label.y = 0.05, use_label(c("R2", "p"))) +
+  geom_point() + 
+  facet_wrap(~hgnc_symbol, scales = "free_y") + 
+  theme_bw() + 
+  xlab("E2, pg/ml") + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12))
+
+
+
+```
+
+## CPM vs. P4
+
+```{r}
+#| label: fig-genes-ofi-P4-v02
+#| fig-cap: "Normalized CPM values as a function of P4."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 12
+
+
+df_genes_ofi %>%
+  ggplot(aes(x = P4, y = CPM)) +
+  stat_poly_line(se = FALSE) + 
+  stat_poly_eq(label.y = 0.1, use_label(c("eq"))) + 
+  stat_poly_eq(label.y = 0.05, use_label(c("R2", "p"))) +
+  geom_point() + 
+  facet_wrap(~hgnc_symbol, scales = "free_y") + 
+  theme_bw() + 
+  xlab("P4, ng/ml") + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12))
+
+```
+:::
+
+## V3
+
+```{r}
+
+genes_ofi <- c("DSG1", "ESR1", "PGR", "RPTN", "KRT1", "KRT2", "KRT10", "KRT76", "CDH1")
+
+data_norm <- data_norm_v3
+data_meta <- df_meta_v3
+
+genes_ofi_ensg <- df_ensmbl_annotated %>%
+  filter(hgnc_symbol %in% genes_ofi) %>%
+  dplyr::select(ensembl_gene_id, hgnc_symbol) %>%
+  rename(ENSG = ensembl_gene_id)
+
+df_genes_ofi <- data_norm[genes_ofi_ensg$ENSG, ] %>%
+  as_tibble(rownames = "ENSG") %>% 
+  pivot_longer(-ENSG, names_to = "PatID", values_to = "CPM") %>%
+  left_join(data_meta) %>% 
+  left_join(genes_ofi_ensg) %>% 
+  mutate(hgnc_symbol = factor(hgnc_symbol, levels = genes_ofi)) %>%
+  print()
+  
+```
+
+::: panel-tabset
+## Distribution
+
+```{r}
+#| label: fig-genes-ofi-dist-v03
+#| fig-cap: "Distribution of normalized CPM values for the genes of interest."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 5
+
+# box plot
+
+cpm_min_v3 <- min(apply(data_norm_v3, 1, min)) %>% round(2)
+cpm_max_v3 <- max(apply(data_norm_v3, 1, max)) %>% round(2)
+
+df_genes_ofi %>%
+  ggplot(aes(x = hgnc_symbol, y = CPM)) + 
+  geom_jitter(width = 0.2, alpha = 0.5) + 
+  geom_boxplot(alpha = 0) + 
+  theme_bw() + 
+  xlab("") + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12)) + 
+  ylim(c(cpm_min_v3, cpm_max_v3))
+
+```
+
+Range of normalized CPM values is from `r cpm_min_v3` to `r cpm_max_v3`.
+
+## CPM vs. E2
+
+```{r}
+#| label: fig-genes-ofi-E2-v03
+#| fig-cap: "Normalized CPM values as a function of E2."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 12
+
+
+df_genes_ofi %>%
+  ggplot(aes(x = E2, y = CPM)) +
+  stat_poly_line(se = FALSE) + 
+  stat_poly_eq(label.y = 0.1, use_label(c("eq"))) + 
+  stat_poly_eq(label.y = 0.05, use_label(c("R2", "p"))) +
+  geom_point() + 
+  facet_wrap(~hgnc_symbol, scales = "free_y") + 
+  theme_bw() + 
+  xlab("E2, pg/ml") + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12))
+
+```
+
+## CPM vs. P4
+
+```{r}
+#| label: fig-genes-ofi-P4-v03
+#| fig-cap: "Normalized CPM values as a function of P4."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 12
+
+
+df_genes_ofi %>%
+  ggplot(aes(x = P4, y = CPM)) +
+  stat_poly_line(se = FALSE) + 
+  stat_poly_eq(label.y = 0.1, use_label(c("eq"))) + 
+  stat_poly_eq(label.y = 0.05, use_label(c("R2", "p"))) +
+  geom_point() + 
+  facet_wrap(~hgnc_symbol, scales = "free_y") + 
+  theme_bw() + 
+  xlab("P4, ng/ml") + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12))
+
+df_genes_ofi %>%
+  ggplot(aes(x = E2, y = CPM)) +
+  stat_poly_line(se = FALSE) + 
+  stat_poly_eq(label.y = 0.1, use_label(c("eq"))) + 
+  stat_poly_eq(label.y = 0.05, use_label(c("R2", "p"))) +
+  geom_point() + 
+  facet_wrap(~hgnc_symbol, scales = "free_y") + 
+  theme_bw() + 
+  xlab("E2, pg/ml") + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12))
+
+```
+:::
+
+# Figures for manuscript
+
+```{r}
+#| label: fig-for-MS-v2
+#| fig-cap: "Normalized CPM values as a function of E2."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 12
+
+library(ggpubr)
+genes_ofi <- c("DSG1", "KRT6C", "KRT76")
+
+data_norm <- data_norm_v2
+data_meta <- df_meta_v2
+
+genes_ofi_ensg <- df_ensmbl_annotated %>%
+  filter(hgnc_symbol %in% genes_ofi) %>%
+  dplyr::select(ensembl_gene_id, hgnc_symbol) %>%
+  rename(ENSG = ensembl_gene_id)
+
+df_genes_ofi <- data_norm[genes_ofi_ensg$ENSG, ] %>%
+  as_tibble(rownames = "ENSG") %>% 
+  pivot_longer(-ENSG, names_to = "PatID", values_to = "CPM") %>%
+  left_join(data_meta) %>% 
+  left_join(genes_ofi_ensg) %>% 
+  mutate(hgnc_symbol = factor(hgnc_symbol, levels = genes_ofi)) %>%
+  print()
+
+# df_genes_ofi %>%
+#   ggplot(aes(x = E2, y = CPM)) +
+#   stat_poly_line(se = FALSE) + 
+#   stat_poly_eq(label.y = 0.1, use_label(c("eq"))) + 
+#   stat_poly_eq(label.y = 0.05, use_label(c("R2", "p"))) +
+#   geom_point() + 
+#   facet_wrap(~hgnc_symbol, scales = "free_y") + 
+#   theme_bw() + 
+#   xlab("E2, pg/ml") + 
+#   ylab("logCPM") + 
+#   theme(axis.text = element_text(size = 12), 
+#         axis.title = element_text(size = 12))
+
+ymin <- df_genes_ofi$CPM %>% min()
+ymax <- df_genes_ofi$CPM %>% max()
+
+
+h1 <- ymax + 2
+h2 <- ymax + 1
+df <- df_genes_ofi %>%
+  filter(hgnc_symbol == "DSG1")
+p1 <- ggscatter(df, x = "E2", y = "CPM",
+   color = "black", shape = 21, size = 2,  fill = "lightblue",
+   add = "reg.line",  
+   ggtheme = theme_pubr(),
+   ) + 
+  stat_cor(label.x = 3, label.y = h1) +
+  stat_regline_equation(label.x = 3, label.y = h2) + 
+  ylab("logCPM") + 
+  xlab("E2, pg/ml") + 
+  ylim(c(ymin - 1, ymax + 2)) + 
+  ggtitle("DSG1")
+
+df <- df_genes_ofi %>%
+  filter(hgnc_symbol == "KRT6C")
+p2 <- ggscatter(df, x = "E2", y = "CPM",
+   color = "black", shape = 21, size = 2,  fill = "lightblue",
+   add = "reg.line",  
+   ggtheme = theme_pubr(),
+   ) + 
+  stat_cor(label.x = 3, label.y = h1) +
+  stat_regline_equation(label.x = 3, label.y = h2) + 
+  ylab("logCPM") + 
+  xlab("E2, pg/ml") + 
+  ylim(c(ymin - 1, ymax + 2)) + 
+  ggtitle("KRT6C")
+
+df <- df_genes_ofi %>%
+  filter(hgnc_symbol == "KRT76")
+p3 <- ggscatter(df, x = "E2", y = "CPM",
+   color = "black", shape = 21, size = 2,  fill = "lightblue",
+   add = "reg.line",  
+   ggtheme = theme_pubr(),
+   ) + 
+  stat_cor(label.x = 3, label.y = h1) +
+  stat_regline_equation(label.x = 3, label.y = h2) + 
+  ylab("logCPM") + 
+  xlab("E2, pg/ml") + 
+  ylim(c(ymin - 1, ymax + 2)) + 
+  ggtitle("KRT76")
+
+
+graphics.off()
+
+pdf(file = "E2-vs-genes-v2.pdf", width = 7.2, height = 3.5)
+ggarrange(p1, p2, p3, ncol = 3, common.legend = TRUE, labels = "")
+dev.off()
+
+
+
+```
+
+```{r}
+#| label: fig-for-MS-v3
+#| fig-cap: "Normalized CPM values as a function of E2."
+#| fig-align: center
+#| fig-width: 12
+#| fig-height: 12
+
+library(ggpubr)
+genes_ofi <- c("DSG1", "KRT6C", "KRT76")
+
+data_norm <- data_norm_v3
+data_meta <- df_meta_v3
+
+genes_ofi_ensg <- df_ensmbl_annotated %>%
+  filter(hgnc_symbol %in% genes_ofi) %>%
+  dplyr::select(ensembl_gene_id, hgnc_symbol) %>%
+  rename(ENSG = ensembl_gene_id)
+
+df_genes_ofi <- data_norm[genes_ofi_ensg$ENSG, ] %>%
+  as_tibble(rownames = "ENSG") %>% 
+  pivot_longer(-ENSG, names_to = "PatID", values_to = "CPM") %>%
+  left_join(data_meta) %>% 
+  left_join(genes_ofi_ensg) %>% 
+  mutate(hgnc_symbol = factor(hgnc_symbol, levels = genes_ofi)) %>%
+  print()
+
+# df_genes_ofi %>%
+#   ggplot(aes(x = E2, y = CPM)) +
+#   stat_poly_line(se = FALSE) + 
+#   stat_poly_eq(label.y = 0.1, use_label(c("eq"))) + 
+#   stat_poly_eq(label.y = 0.05, use_label(c("R2", "p"))) +
+#   geom_point() + 
+#   facet_wrap(~hgnc_symbol, scales = "free_y") + 
+#   theme_bw() + 
+#   xlab("E2, pg/ml") + 
+#   ylab("logCPM") + 
+#   theme(axis.text = element_text(size = 12), 
+#         axis.title = element_text(size = 12))
+
+ymin <- df_genes_ofi$CPM %>% min()
+ymax <- df_genes_ofi$CPM %>% max()
+
+
+h1 <- ymax + 2
+h2 <- ymax + 1
+df <- df_genes_ofi %>%
+  filter(hgnc_symbol == "DSG1")
+p1 <- ggscatter(df, x = "E2", y = "CPM",
+   color = "black", shape = 21, size = 2,  fill = "lightblue",
+   add = "reg.line",  
+   ggtheme = theme_pubr(),
+   ) + 
+  stat_cor(label.x = 3, label.y = h1) +
+  stat_regline_equation(label.x = 3, label.y = h2) + 
+  ylab("logCPM") + 
+  xlab("E2, pg/ml") + 
+  ylim(c(ymin - 1, ymax + 2)) + 
+  ggtitle("DSG1")
+
+df <- df_genes_ofi %>%
+  filter(hgnc_symbol == "KRT6C")
+p2 <- ggscatter(df, x = "E2", y = "CPM",
+   color = "black", shape = 21, size = 2,  fill = "lightblue",
+   add = "reg.line",  
+   ggtheme = theme_pubr(),
+   ) + 
+  stat_cor(label.x = 3, label.y = h1) +
+  stat_regline_equation(label.x = 3, label.y = h2) + 
+  ylab("logCPM") + 
+  xlab("E2, pg/ml") + 
+  ylim(c(ymin - 1, ymax + 2)) + 
+  ggtitle("KRT6C")
+
+df <- df_genes_ofi %>%
+  filter(hgnc_symbol == "KRT76")
+p3 <- ggscatter(df, x = "E2", y = "CPM",
+   color = "black", shape = 21, size = 2,  fill = "lightblue",
+   add = "reg.line",  
+   ggtheme = theme_pubr(),
+   ) + 
+  stat_cor(label.x = 3, label.y = h1) +
+  stat_regline_equation(label.x = 3, label.y = h2) + 
+  ylab("logCPM") + 
+  xlab("E2, pg/ml") + 
+  ylim(c(ymin - 1, ymax + 2)) + 
+  ggtitle("KRT76")
+
+
+graphics.off()
+
+pdf(file = "E2-vs-genes-v3.pdf", width = 7.2, height = 4)
+ggarrange(p1, p2, p3, ncol = 3, common.legend = TRUE, labels = "")
+dev.off()
+
+```
+
+# Conclusions & comments
+
+-   Summary statistics and univariate analysis of the clinical variables shows that samples in V2 and V2 are similar in age and that there are significant differences in group means when comparing E2 and P4 hormone levels. This is consistent with the study design, with overlapping patients between V2 and V3 (same age) and different menstrual phases (V2, luteal and V3 follicular) characterized by varying hormone levels (@tbl-clin).No statistically significant differences were observed between distributions of diagnosis of bacterial vaignosis among V2 and V3.
+-   Overall, there was not many missing data observed, e.g. there was one missing entry for BV (V2) since hormone levels values below the limit of detection were imputed previously. It may be worthwhile to mention that over 50% of entries for P4 for V3 were initially below limit of detection (@tbl-clin).
+-   V2: potential outlier based on PCA, PatID 2778
+
+# Session info {.unnumbered}
+
+```{r}
+#| code-fold: false
+print(sessionInfo())
+```

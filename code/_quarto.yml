@@ -1,6 +1,8 @@
 project:
   output-dir: "../report"
+  execute-dir: project
   title: "#7285"
+
 
 
 

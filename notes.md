@@ -1,12 +1,19 @@
 # Mtg notes
 
-# ToDo
+## ToDo
 
-
-- see if all matched V2 and V3 have corresponding count data
+- EDA: normalized counts by BV, V2 and V3 separately (age, Nugent score)
+- EDA: normalized counts V2 and V3, together, by RNA-seq batch
 - think about batch effect? do I need to account for days passed in models? Or enough as two time points V2 and V3?
 
+- (done): EDA: BV, Nugent Score, age, by V2 and V3 and change from V3 (T1) and V2 (T2)
+- (done) samples by BV and available count data
 - (done) load clinical data, check V2 and V3 overlapp, all, complete data for age and BV
+
+## Questions
+
+- any other clinical covariates we should look into during EDA?
+- what about one sample that we are missing Nugent score but have BV category? Keep or remove?
 
 ## 2023-01-23, Kristina, Alexandra
 
