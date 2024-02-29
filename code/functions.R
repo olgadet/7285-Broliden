@@ -23,7 +23,7 @@ func_pca <- function(x = m_v2, df_meta = df_meta_v2, n_loadings = 5){
   
 }
 
-func_pca_v2v3 <- function(x = m_v2, df_meta = df_clin_long, n_loadings = 5){
+func_pca_v2v3 <- function(x = m_v2, df_meta = df_clin_long_v2v3, n_loadings = 5){
   
   # calculate pca
   pca <- prcomp(t(x), center=TRUE, scale.=FALSE)
@@ -134,7 +134,7 @@ func_plot_pca_by_cat <- function(pc_x = 1, pc_y = 2, cov = "BV", df = pca_scores
 
 
 ##---func_plot_loadings
-func_plot_loadings <- function(pc = 1, ntop = 10, df_loadings, db = df_ensmbl_annotated, inp.color = "#377EB8" ){
+func_plot_loadings <- function(pc = 1, ntop = 10, df_loadings, db = counts_anno, inp.color = "#377EB8" ){
   
   pc <- paste("PC", pc, sep="")
   

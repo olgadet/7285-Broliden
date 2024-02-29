@@ -38,10 +38,8 @@ library(kableExtra)
 library(ggpmisc)
 library(ggpubr)
 
-
 # load functions
 source("functions.R")
-
 ```
 
 ```{r}
@@ -74,24 +72,76 @@ mytheme <- theme(legend.title = element_blank(),
 
 # Clinical data
 
+::: {.panel-tabset}
+
+## V3
 ```{r}
-#| label: tbl-summary-stats
-#| tbl-cap: "Summary statistics of BV, Nugent Score and Age for V2 and V3 overlapping samples."
+#| label: tbl-summary-stats-v3
+#| tbl-cap: "Summary statistics of BV, Nugent Score, Age and HIV status for V3 samples."
 #| results: asis
 
 # clinical data
-df_clin <- df_meta_subset %>%
-  left_join(df_meta) 
+df_clin_v3 <- df_meta %>%
+  select(PatID, BV_v3, countfile_v3) %>%
+  na.omit() %>%
+  left_join(df_meta) %>%
+    rename(BV = BV_v3, 
+         Nugent = Nugent_v3)
+
+df_clin_v3 %>%
+  dplyr::select(c(BV, Nugent, age, HIVstatus)) %>%
+  tbl_summary(
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
+
+## V2
+
+```{r}
+#| label: tbl-summary-stats-v2
+#| tbl-cap: "Summary statistics of BV, Nugent Score, Age and HIV status for V2 samples."
+#| results: asis
+
+df_clin_v2 <- df_meta %>%
+  select(PatID, BV_v2, countfile_v2) %>%
+  na.omit() %>%
+  left_join(df_meta) %>%
+    rename(BV = BV_v2, 
+         Nugent = Nugent_v2) 
+
+df_clin_v2 %>%
+  dplyr::select(c(BV, Nugent, age, HIVstatus)) %>%
+  tbl_summary(
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
+
+
+## V3 & V2
+```{r}
+#| label: tbl-summary-stats
+#| tbl-cap: "Summary statistics of BV, Nugent Score and Age for V3 and V2 overlapping samples."
+#| results: asis
+
+# clinical data
+df_clin_v2v3 <- df_meta %>%
+  select(PatID, BV_v2, countfile_v2, BV_v3, countfile_v3) %>%
+  na.omit() %>%
+  left_join(df_meta)
 
 # extend with delta BV and Nugent scores (V3: folicular phase - V2: luteal phase)
-df_clin_ext <- df_clin %>%
+df_clin_v2v3 <- df_clin_v2v3 %>%
   mutate(delta_Nugent = Nugent_v2 - Nugent_v3) %>%
   mutate(delta_BV = as.numeric(BV_v2) - as.numeric(BV_v3)) %>%
   mutate(delta_BV = as.factor(delta_BV))
 
 # clinical data in long format
-df_v2 <- df_clin %>%
-  dplyr::select(PatID, BV_v2, Nugent_v2, age) %>%
+df_v2 <- df_clin_v2v3 %>%
+  dplyr::select(PatID, BV_v2, Nugent_v2, age, HIVstatus) %>%
   mutate(ID = paste(PatID, "_V2", sep="")) %>%
   mutate(V = "V2") %>%
   rename(BV = BV_v2, 
@@ -99,8 +149,8 @@ df_v2 <- df_clin %>%
   relocate(V, .after = PatID) %>%
   relocate(ID)
 
-df_v3 <- df_clin %>%
-  dplyr::select(PatID, BV_v3, Nugent_v3, age) %>%
+df_v3 <- df_clin_v2v3 %>%
+  dplyr::select(PatID, BV_v3, Nugent_v3, age, HIVstatus) %>%
   mutate(ID = paste(PatID, "_V3", sep="")) %>%
   mutate(V = "V3") %>%
   rename(BV = BV_v3, 
@@ -108,49 +158,81 @@ df_v3 <- df_clin %>%
   relocate(V, .after = PatID) %>%
   relocate(ID)
 
-df_clin_long <- rbind(df_v2, df_v3) %>%
+df_clin_long_v2v3 <- rbind(df_v2, df_v3) %>%
   mutate(V = factor(V, levels = c("V3", "V2")))
 
-df_clin_long %>%
+df_clin_long_v2v3 %>%
   dplyr::select(!c(PatID, ID)) %>%
   tbl_summary(by = V,
               missing_text = "(Missing)") %>%
+  add_p() %>%
   as_kable_extra(booktabs = TRUE) %>%
-  kable_styling()
+  kable_styling() 
 
 ```
+
+:::
 
 ## Nugent Score
 
 ::: {.panel-tabset}
 
-### Histogram
+### Histogram (V3)
 ```{r}
-#| label: fig-NS-histogram
-#| fig-cap: "Histogram of Nugent scores for V2 and V3 samples."
+#| label: fig-NS-histogram-v3
+#| fig-cap: "Histogram of Nugent scores for V3 samples."
 
-df_clin_long %>%
-  ggplot(aes(x=Nugent, fill = V)) + 
-  geom_histogram(color = "black", alpha = 0.7) +
-  facet_wrap(~V, ncol = 1) + 
+df_clin_v3 %>%
+  ggplot(aes(x=Nugent)) +
+  geom_histogram(color = "black", fill = mycols2[1], alpha = 0.7) +
   xlab("Nugent score") +
-  scale_fill_manual(values = mycols2) + 
-  theme_bw() + 
+  theme_bw() +
   mytheme
 
 ```
 
-### Density
+### Histogram (V2)
+```{r}
+#| label: fig-NS-histogram-v2
+#| fig-cap: "Histogram of Nugent scores for V2 samples."
+
+df_clin_v2 %>%
+  ggplot(aes(x=Nugent)) +
+  geom_histogram(color = "black", fill = mycols2[2], alpha = 0.7) +
+  xlab("Nugent score") +
+  theme_bw() +
+  mytheme
+
+```
+
+
+### Histogram (V3 & V2)
+```{r}
+#| label: fig-NS-histogram
+#| fig-cap: "Histogram of Nugent scores for V2 and V3 samples."
+
+df_clin_long_v2v3 %>%
+  ggplot(aes(x=Nugent, fill = V)) +
+  geom_histogram(color = "black", alpha = 0.7) +
+  facet_wrap(~V, ncol = 1) +
+  xlab("Nugent score") +
+  scale_fill_manual(values = mycols2) +
+  theme_bw() +
+  mytheme
+
+```
+
+### Density (V3 and V2)
 ```{r}
 #| label: fig-NS-density
 #| fig-cap: "Density plot of Nugent scores for V2 and V3 samples."
 
-df_clin_long %>%
-  ggplot(aes(x=Nugent, group = V, color = V)) + 
-  geom_density(size = 1.2) + 
-  scale_color_manual(values = mycols2) + 
-  xlab("Nugent score") + 
-  theme_bw() + 
+df_clin_long_v2v3 %>%
+  ggplot(aes(x=Nugent, group = V, color = V)) +
+  geom_density(size = 1.2) +
+  scale_color_manual(values = mycols2) +
+  xlab("Nugent score") +
+  theme_bw() +
   mytheme
 ```
 
@@ -159,12 +241,12 @@ df_clin_long %>%
 #| label: fig-NS-density-delta
 #| fig-cap: "Distribution of a change of Nugent scores between V3 (follicular phase) and V2 (luteal phase)."
 
-df_clin_ext %>%
-  ggplot(aes(x=delta_Nugent)) + 
+df_clin_v2v3 %>%
+  ggplot(aes(x=delta_Nugent)) +
   geom_histogram(color = "black", fill = mycols[2], alpha = 0.7) +
-  scale_color_manual(values = mycols2) + 
-  xlab("Nugent score") + 
-  theme_bw() + 
+  scale_color_manual(values = mycols2) +
+  xlab("Nugent score") +
+  theme_bw() +
   mytheme
 
 ```
@@ -174,219 +256,53 @@ df_clin_ext %>%
 ## BV
 ```{r}
 #| label: tbl-BV-change
-#| tbl-cap: "Change of BV category between V3 and V2 phases."
+#| tbl-cap: "Change of BV category between V3 and V2 phases (numerical difference)."
 #| results: asis
 
-df_clin_ext %>%
+df_clin_v2v3 %>%
   dplyr::select(delta_BV) %>%
   tbl_summary(missing_text = "(Missing)") %>%
   as_kable_extra(booktabs = TRUE) %>%
   kable_styling()
 ```
 
-# Normalized count data
+
 ```{r}
-# calculate PCA on normalized counts
-x <- counts_norm_v2 %>%
-  column_to_rownames("gene")
-pca_v2 <- func_pca(x, df_clin)
-head(pca_v2$scores)
+#| label: tbl-BV-change-factors
+#| tbl-cap: "Change of BV category between V3 and V2 phases (in detail)."
+#| results: asis
 
-x <- counts_norm_v3 %>%
-  column_to_rownames("gene")
-pca_v3 <- func_pca(x, df_clin)
-head(pca_v3$scores)
-
-x <- counts_norm_v2v3 %>%
-  column_to_rownames("gene")
-pca_v2v3 <- func_pca_v2v3(x, df_clin_long)
-head(pca_v2v3$scores)
-
-```
-
-## PCA V2 (luteal phase)
-
-::: {.panel-tabset}
-
-### PC1 vs PC2
-```{r}
-#| fig-width: 3
-#| fig-height: 3
-pca_scores <- pca_v2$scores
-plot <- func_plot_pca(1, 2, df = pca_scores)
-ggplotly(plot)
-```
-
-### PC1 vs PC3
-```{r}
-#| fig-width: 3
-#| fig-height: 3
-plot <- func_plot_pca(1, 3, df = pca_scores)
-ggplotly(plot)
-```
-
-### PC2 vs PC3
-```{r}
-#| fig-width: 3
-#| fig-height: 3
-plot <- func_plot_pca(2, 3, df = pca_scores)
-ggplotly(plot)
-```
-:::
-
-## Loadings
-
-::: {.panel-tabset}
-### PC1
-```{r}
-ld <- pca_v2$loadings
-func_plot_loadings(pc = 1, df_loadings = ld, ntop = 10)
-```
-
-### PC2
-```{r}
-func_plot_loadings(pc = 2, df_loadings = ld, ntop = 10)
-```
-
-### PC3
-```{r}
-func_plot_loadings(pc = 3, df_loadings = ld, ntop = 10)
-```
-:::
-
-## BV, Nugent score, age
-```{r}
-# covariates association with PCs
-df <- pca_scores
-covs <- c("BV_v2", "Nugent_v2", "age")
-
-# initiate empty matrix to store p-values from statistical tests
-no_pca <- 5
-m_pvalues <- m_stats <-  m_df <-  matrix(data = NA, nrow = length(covs), ncol = no_pca, 
-                    dimnames = list(covs, paste("PC", 1:no_pca, sep="")))
-colnames(m_pvalues) <- paste("PC", 1:ncol(m_pvalues), sep="")
-rownames(m_pvalues) <- covs
-
-# for every covariate and up to selected number of PCA compontents, check for asssociation
-for (ivar in 1:length(covs)){
+df_clin_v2v3 %>%
+  select(PatID, BV_v2, BV_v3) %>%
+  mutate(change_BV = paste(BV_v3, BV_v2, sep = "-")) %>%
+  mutate(change_BV = factor(change_BV)) %>%
+  select(change_BV) %>%
+  tbl_summary(missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
   
-  cov <- covs[ivar]
-  x <- df %>% pull(cov)
-  
-  cov_type <- class(x)
-  
-  if (cov_type == "integer" | cov_type == "numeric"){ # linear regression for numerical variables and PC components
-    
-    # tmp covariate such as age
-    cov <- covs[ivar]
-  
-    for (j in 1:no_pca){
-      
-      # regression
-      f <- paste(cov, " ~ ", "PC", j, sep="")
-      f <- as.formula(f)
-      m <- lm(f, data = df)
-      m_pvalues[ivar, j] <- summary(m)$coefficient[2, 4]
-      
-      pc_name <- paste("PC", j, "", sep="")
-      pc_value <- df %>% pull(pc_name)
-      cortest <- cor.test(pc_value, x)
-      m_stats[ivar, j] <- cortest$statistic
-      m_df[ivar, j] <- cortest$parameter
-     
-    }
-  }
-
-    if (cov_type == "factor"){ #ANOVA
-    
-    # tmp covariate such as age
-    cov <- covs[ivar]
-  
-    for (j in 1:no_pca){
-      
-      # Kruskal-Wallis rank sum test
-      pc_name <- paste("PC", j, "", sep="")
-      pc_value <- df %>% pull(pc_name)
-      
-      test <- kruskal.test(pc_value ~ x)
-      m_pvalues[ivar, j] <- test$p.value
-      
-      m_stats[ivar, j] <- test$statistic
-      m_df[ivar, j] <- test$parameter
-     
-    }
-  }
-}
-
-cols_pink_green <- brewer.pal(6, "PiYG")
-cols_spectral <- brewer.pal(6, "Spectral")
-col_highlight <- cols_pink_green[2]
-df_pvalues <- data.frame(round(m_pvalues, 3))
-
-df_pvalues %>%
-  mutate_all(~cell_spec(.x, color = case_when(
-  .x <= 0.01 ~ cols_spectral[1],
-  .x <= 0.05 & .x > 0.01 ~ cols_spectral[2],
-  .default = "black"))) %>%
-  kbl(booktabs = T, linesep = "", escape = F) %>%
-  kable_paper(full_width = T) %>%
-  footnote(general = c("Highlighted in red p-values <= 0.01", "Highlighted in orange p-values <= 0.05"))
 ```
 
-::: {.panel-tabset}
-### PC1 vs PC2 (BV)
-```{r}
-#| fig-width: 7
-#| fig-height: 6
-plot <- func_plot_pca_by_cat(1, 2, cov = "BV_v2", pca_scores)
-ggplotly(plot)
-```
-### PC1 vs PC3 (BV)
-```{r}
-#| fig-width: 7
-#| fig-height: 6
-plot <- func_plot_pca_by_cat(1, 3, cov = "BV_v2", pca_scores)
-ggplotly(plot)
-```
-### PC2 vs PC3 (BV)
-```{r}
-#| fig-width: 7
-#| fig-height: 6
-plot <- func_plot_pca_by_cat(2, 3, cov = "BV_v2", pca_scores)
-ggplotly(plot)
-```
-### PC1 vs PC5 (BV)
-```{r}
-#| fig-width: 7
-#| fig-height: 6
-plot <- func_plot_pca_by_cat(1, 5, cov = "BV_v2", pca_scores)
-ggplotly(plot)
-```
-### PC1 vs PC2 (Nugent)
-```{r}
-#| fig-width: 7
-#| fig-height: 6
-plot <- func_plot_pca_by_num(1, 2, cov = "Nugent_v2", pca_scores)
-ggplotly(plot)
-```
-### PC1 vs. PC2 (age)
-```{r}
-#| fig-width: 7
-#| fig-height: 6
-plot <- func_plot_pca_by_num(1, 2, cov = "age", pca_scores)
-ggplotly(plot)
-```
-### PC1 vs PC5 (age)
-```{r}
-#| fig-width: 7
-#| fig-height: 6
-plot <- func_plot_pca_by_num(1, 5, cov = "age", pca_scores)
-ggplotly(plot)
-```
-:::
+
+# V3: follicular phase
 
 
 ## PCA V3 (follicular phase)
+```{r}
+#| include: true
+#| eval: true
+
+# calculate PCA on normalized counts
+data <- counts_norm_v3
+df_clin <- df_clin_v3
+
+x <- data %>%
+  column_to_rownames("gene")
+
+pca_v3 <- func_pca(x, df_clin)
+```
+
+
 ::: {.panel-tabset}
 ### PC1 vs PC2
 ```{r}
@@ -438,62 +354,62 @@ func_plot_loadings(pc = 3, df_loadings = ld, ntop = 10)
 ```{r}
 # covariates association with PCs
 df <- pca_scores
-covs <- c("BV_v3", "Nugent_v3", "age")
+covs <- c("BV", "Nugent", "age")
 
 # initiate empty matrix to store p-values from statistical tests
 no_pca <- 5
-m_pvalues <- m_stats <-  m_df <-  matrix(data = NA, nrow = length(covs), ncol = no_pca, 
+m_pvalues <- m_stats <-  m_df <-  matrix(data = NA, nrow = length(covs), ncol = no_pca,
                     dimnames = list(covs, paste("PC", 1:no_pca, sep="")))
 colnames(m_pvalues) <- paste("PC", 1:ncol(m_pvalues), sep="")
 rownames(m_pvalues) <- covs
 
-# for every covariate and up to selected number of PCA compontents, check for asssociation
+# for every covariate and up to selected number of PCA components, check for association
 for (ivar in 1:length(covs)){
-  
+
   cov <- covs[ivar]
   x <- df %>% pull(cov)
-  
+
   cov_type <- class(x)
-  
+
   if (cov_type == "integer" | cov_type == "numeric"){ # linear regression for numerical variables and PC components
-    
+
     # tmp covariate such as age
     cov <- covs[ivar]
-  
+
     for (j in 1:no_pca){
-      
+
       # regression
       f <- paste(cov, " ~ ", "PC", j, sep="")
       f <- as.formula(f)
       m <- lm(f, data = df)
       m_pvalues[ivar, j] <- summary(m)$coefficient[2, 4]
-      
+
       pc_name <- paste("PC", j, "", sep="")
       pc_value <- df %>% pull(pc_name)
       cortest <- cor.test(pc_value, x)
       m_stats[ivar, j] <- cortest$statistic
       m_df[ivar, j] <- cortest$parameter
-     
+
     }
   }
 
     if (cov_type == "factor"){ #ANOVA
-    
+
     # tmp covariate such as age
     cov <- covs[ivar]
-  
+
     for (j in 1:no_pca){
-      
+
       # Kruskal-Wallis rank sum test
       pc_name <- paste("PC", j, "", sep="")
       pc_value <- df %>% pull(pc_name)
-      
+
       test <- kruskal.test(pc_value ~ x)
       m_pvalues[ivar, j] <- test$p.value
-      
+
       m_stats[ivar, j] <- test$statistic
       m_df[ivar, j] <- test$parameter
-     
+
     }
   }
 }
@@ -518,21 +434,21 @@ df_pvalues %>%
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_cat(1, 2, cov = "BV_v3", pca_scores)
+plot <- func_plot_pca_by_cat(1, 2, cov = "BV", pca_scores)
 ggplotly(plot)
 ```
 ### PC1 vs PC3 (BV)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_cat(1, 3, cov = "BV_v3", pca_scores)
+plot <- func_plot_pca_by_cat(1, 3, cov = "BV", pca_scores)
 ggplotly(plot)
 ```
 ### PC2 vs PC3 (BV)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_cat(2, 3, cov = "BV_v3", pca_scores)
+plot <- func_plot_pca_by_cat(2, 3, cov = "BV", pca_scores)
 ggplotly(plot)
 ```
 
@@ -540,7 +456,7 @@ ggplotly(plot)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_cat(1, 4, cov = "BV_v3", pca_scores)
+plot <- func_plot_pca_by_cat(1, 4, cov = "BV", pca_scores)
 ggplotly(plot)
 ```
 
@@ -548,7 +464,7 @@ ggplotly(plot)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_cat(1, 5, cov = "BV_v3", pca_scores)
+plot <- func_plot_pca_by_cat(1, 5, cov = "BV", pca_scores)
 ggplotly(plot)
 ```
 
@@ -556,7 +472,7 @@ ggplotly(plot)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_cat(4, 5, cov = "BV_v3", pca_scores)
+plot <- func_plot_pca_by_cat(4, 5, cov = "BV", pca_scores)
 ggplotly(plot)
 ```
 
@@ -564,15 +480,15 @@ ggplotly(plot)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_num(1, 2, cov = "Nugent_v3", pca_scores)
+plot <- func_plot_pca_by_num(1, 2, cov = "Nugent", pca_scores)
 ggplotly(plot)
 ```
 
-### PC1 vs PC4 (Nugent)
+### PC1 vs PC3 (Nugent)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_num(1, 4, cov = "Nugent_v3", pca_scores)
+plot <- func_plot_pca_by_num(1, 3, cov = "Nugent", pca_scores)
 ggplotly(plot)
 ```
 
@@ -580,7 +496,7 @@ ggplotly(plot)
 ```{r}
 #| fig-width: 7
 #| fig-height: 6
-plot <- func_plot_pca_by_num(1, 5, cov = "Nugent_v3", pca_scores)
+plot <- func_plot_pca_by_num(1, 5, cov = "Nugent", pca_scores)
 ggplotly(plot)
 ```
 
@@ -598,9 +514,246 @@ ggplotly(plot)
 plot <- func_plot_pca_by_num(1, 5, cov = "age", pca_scores)
 ggplotly(plot)
 ```
+
 :::
 
-## PCA V2 & V3 (luteal & follicular)
+
+# V2: luteal phase
+
+## PCA V2
+
+```{r}
+# calculate PCA
+data <- counts_norm_v2
+df_clin <- df_clin_v2
+
+x <- data %>%
+  column_to_rownames("gene")
+
+pca_v2 <- func_pca(x, df_clin)
+```
+
+
+::: {.panel-tabset}
+
+### PC1 vs PC2
+```{r}
+#| fig-width: 3
+#| fig-height: 3
+pca_scores <- pca_v2$scores
+plot <- func_plot_pca(1, 2, df = pca_scores)
+ggplotly(plot)
+```
+
+### PC1 vs PC3
+```{r}
+#| fig-width: 3
+#| fig-height: 3
+plot <- func_plot_pca(1, 3, df = pca_scores)
+ggplotly(plot)
+```
+
+### PC2 vs PC3
+```{r}
+#| fig-width: 3
+#| fig-height: 3
+plot <- func_plot_pca(2, 3, df = pca_scores)
+ggplotly(plot)
+```
+:::
+
+## Loadings
+
+::: {.panel-tabset}
+### PC1
+```{r}
+ld <- pca_v2$loadings
+func_plot_loadings(pc = 1, df_loadings = ld, ntop = 10)
+```
+
+### PC2
+```{r}
+func_plot_loadings(pc = 2, df_loadings = ld, ntop = 10)
+```
+
+### PC3
+```{r}
+func_plot_loadings(pc = 3, df_loadings = ld, ntop = 10)
+```
+:::
+
+## BV, Nugent score, age, HIV status
+```{r}
+# covariates association with PCs
+df <- pca_scores
+covs <- c("BV", "Nugent", "age", "HIVstatus")
+
+# initiate empty matrix to store p-values from statistical tests
+no_pca <- 5
+m_pvalues <- m_stats <-  m_df <-  matrix(data = NA, nrow = length(covs), ncol = no_pca,
+                    dimnames = list(covs, paste("PC", 1:no_pca, sep="")))
+colnames(m_pvalues) <- paste("PC", 1:ncol(m_pvalues), sep="")
+rownames(m_pvalues) <- covs
+
+# for every covariate and up to selected number of PCA compontents, check for asssociation
+for (ivar in 1:length(covs)){
+
+  cov <- covs[ivar]
+  x <- df %>% pull(cov)
+
+  cov_type <- class(x)
+
+  if (cov_type == "integer" | cov_type == "numeric"){ # linear regression for numerical variables and PC components
+
+    # tmp covariate such as age
+    cov <- covs[ivar]
+
+    for (j in 1:no_pca){
+
+      # regression
+      f <- paste(cov, " ~ ", "PC", j, sep="")
+      f <- as.formula(f)
+      m <- lm(f, data = df)
+      m_pvalues[ivar, j] <- summary(m)$coefficient[2, 4]
+
+      pc_name <- paste("PC", j, "", sep="")
+      pc_value <- df %>% pull(pc_name)
+      cortest <- cor.test(pc_value, x)
+      m_stats[ivar, j] <- cortest$statistic
+      m_df[ivar, j] <- cortest$parameter
+
+    }
+  }
+
+    if (cov_type == "factor"){ #ANOVA
+
+    # tmp covariate such as age
+    cov <- covs[ivar]
+
+    for (j in 1:no_pca){
+
+      # Kruskal-Wallis rank sum test
+      pc_name <- paste("PC", j, "", sep="")
+      pc_value <- df %>% pull(pc_name)
+
+      test <- kruskal.test(pc_value ~ x)
+      m_pvalues[ivar, j] <- test$p.value
+
+      m_stats[ivar, j] <- test$statistic
+      m_df[ivar, j] <- test$parameter
+
+    }
+  }
+}
+
+cols_pink_green <- brewer.pal(6, "PiYG")
+cols_spectral <- brewer.pal(6, "Spectral")
+col_highlight <- cols_pink_green[2]
+df_pvalues <- data.frame(round(m_pvalues, 3))
+
+df_pvalues %>%
+  mutate_all(~cell_spec(.x, color = case_when(
+  .x <= 0.01 ~ cols_spectral[1],
+  .x <= 0.05 & .x > 0.01 ~ cols_spectral[2],
+  .default = "black"))) %>%
+  kbl(booktabs = T, linesep = "", escape = F) %>%
+  kable_paper(full_width = T) %>%
+  footnote(general = c("Highlighted in red p-values <= 0.01", "Highlighted in orange p-values <= 0.05"))
+```
+
+::: {.panel-tabset}
+### PC1 vs PC2 (BV)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 2, cov = "BV", pca_scores)
+ggplotly(plot)
+```
+### PC1 vs PC3 (BV)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 3, cov = "BV", pca_scores)
+ggplotly(plot)
+```
+### PC2 vs PC3 (BV)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(2, 3, cov = "BV", pca_scores)
+ggplotly(plot)
+```
+
+### PC1 vs PC2 (Nugent)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_num(1, 2, cov = "Nugent", pca_scores)
+ggplotly(plot)
+```
+
+### PC1 vs PC3 (Nugent)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_num(1, 2, cov = "Nugent", pca_scores)
+ggplotly(plot)
+```
+
+### PC1 vs. PC2 (age)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_num(1, 2, cov = "age", pca_scores)
+ggplotly(plot)
+```
+
+### PC1 vs PC4 (age)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_num(1, 4, cov = "age", pca_scores)
+ggplotly(plot)
+```
+
+### PC1 vs PC2 (HIV status)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 2, cov = "HIVstatus", pca_scores)
+ggplotly(plot)
+```
+
+### PC1 vs PC3 (HIV status)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(1, 3, cov = "HIVstatus", pca_scores)
+ggplotly(plot)
+```
+
+### PC2 vs PC3 (HIV status)
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+plot <- func_plot_pca_by_cat(2, 3, cov = "HIVstatus", pca_scores)
+ggplotly(plot)
+```
+
+:::
+
+
+# V2 and V3 (luteal & follicular)
+## PCA
+
+```{r}
+x <- counts_norm_v2v3 %>%
+  column_to_rownames("gene")
+
+pca_v2v3 <- func_pca_v2v3(x, df_clin_long_v2v3)
+
+```
+
 ::: {.panel-tabset}
 ### PC1 vs PC2
 ```{r}
@@ -657,58 +810,58 @@ covs <- c("V", "BV", "Nugent", "age")
 
 # initiate empty matrix to store p-values from statistical tests
 no_pca <- 5
-m_pvalues <- m_stats <-  m_df <-  matrix(data = NA, nrow = length(covs), ncol = no_pca, 
+m_pvalues <- m_stats <-  m_df <-  matrix(data = NA, nrow = length(covs), ncol = no_pca,
                     dimnames = list(covs, paste("PC", 1:no_pca, sep="")))
 colnames(m_pvalues) <- paste("PC", 1:ncol(m_pvalues), sep="")
 rownames(m_pvalues) <- covs
 
 # for every covariate and up to selected number of PCA components, check for association
 for (ivar in 1:length(covs)){
-  
+
   cov <- covs[ivar]
   x <- df %>% pull(cov)
-  
+
   cov_type <- class(x)
-  
+
   if (cov_type == "integer" | cov_type == "numeric"){ # linear regression for numerical variables and PC components
-    
+
     # tmp covariate such as age
     cov <- covs[ivar]
-  
+
     for (j in 1:no_pca){
-      
+
       # regression
       f <- paste(cov, " ~ ", "PC", j, sep="")
       f <- as.formula(f)
       m <- lm(f, data = df)
       m_pvalues[ivar, j] <- summary(m)$coefficient[2, 4]
-      
+
       pc_name <- paste("PC", j, "", sep="")
       pc_value <- df %>% pull(pc_name)
       cortest <- cor.test(pc_value, x)
       m_stats[ivar, j] <- cortest$statistic
       m_df[ivar, j] <- cortest$parameter
-     
+
     }
   }
 
     if (cov_type == "factor"){ #ANOVA
-    
+
     # tmp covariate such as age
     cov <- covs[ivar]
-  
+
     for (j in 1:no_pca){
-      
+
       # Kruskal-Wallis rank sum test
       pc_name <- paste("PC", j, "", sep="")
       pc_value <- df %>% pull(pc_name)
-      
+
       test <- kruskal.test(pc_value ~ x)
       m_pvalues[ivar, j] <- test$p.value
-      
+
       m_stats[ivar, j] <- test$statistic
       m_df[ivar, j] <- test$parameter
-     
+
     }
   }
 }
@@ -784,121 +937,3 @@ ggplotly(plot)
 ```
 :::
 
-```{r}
-
-# removing batch effect?
-
-# Combat?
-# RUVg?
-
-install.packages("sva")
-library(sva)
-
-expr_matrix <- counts_norm_v2v3 %>%
-  column_to_rownames("gene")
-
-combat_dat <- ComBat(expr_matrix, batch=df_clin_long$V, par.prior=TRUE, prior.plots=FALSE)
-
-counts_combat <- combat_dat %>%
-  as_tibble(rownames = "gene")
-
-
-x <- counts_combat %>%
-  column_to_rownames("gene")
-
-pca_combat <- func_pca_v2v3(x, df_clin_long)
-head(pca_combat$scores)
-
-```
-
-
-### PC1 vs PC2
-```{r}
-#| fig-width: 3
-#| fig-height: 3
-pca_scores <- pca_combat$scores
-plot <- func_plot_pca_v2v3(1, 2, df = pca_scores)
-ggplotly(plot)
-
-
-plot <- func_plot_pca_by_cat(1, 2, cov = "BV")
-ggplotly(plot)
-```
-
-```{r}
-# covariates association with PCs
-df <- pca_scores
-covs <- c("V", "BV", "Nugent", "age")
-
-# initiate empty matrix to store p-values from statistical tests
-no_pca <- 5
-m_pvalues <- m_stats <-  m_df <-  matrix(data = NA, nrow = length(covs), ncol = no_pca, 
-                    dimnames = list(covs, paste("PC", 1:no_pca, sep="")))
-colnames(m_pvalues) <- paste("PC", 1:ncol(m_pvalues), sep="")
-rownames(m_pvalues) <- covs
-
-# for every covariate and up to selected number of PCA components, check for association
-for (ivar in 1:length(covs)){
-  
-  cov <- covs[ivar]
-  x <- df %>% pull(cov)
-  
-  cov_type <- class(x)
-  
-  if (cov_type == "integer" | cov_type == "numeric"){ # linear regression for numerical variables and PC components
-    
-    # tmp covariate such as age
-    cov <- covs[ivar]
-  
-    for (j in 1:no_pca){
-      
-      # regression
-      f <- paste(cov, " ~ ", "PC", j, sep="")
-      f <- as.formula(f)
-      m <- lm(f, data = df)
-      m_pvalues[ivar, j] <- summary(m)$coefficient[2, 4]
-      
-      pc_name <- paste("PC", j, "", sep="")
-      pc_value <- df %>% pull(pc_name)
-      cortest <- cor.test(pc_value, x)
-      m_stats[ivar, j] <- cortest$statistic
-      m_df[ivar, j] <- cortest$parameter
-     
-    }
-  }
-
-    if (cov_type == "factor"){ #ANOVA
-    
-    # tmp covariate such as age
-    cov <- covs[ivar]
-  
-    for (j in 1:no_pca){
-      
-      # Kruskal-Wallis rank sum test
-      pc_name <- paste("PC", j, "", sep="")
-      pc_value <- df %>% pull(pc_name)
-      
-      test <- kruskal.test(pc_value ~ x)
-      m_pvalues[ivar, j] <- test$p.value
-      
-      m_stats[ivar, j] <- test$statistic
-      m_df[ivar, j] <- test$parameter
-     
-    }
-  }
-}
-
-cols_pink_green <- brewer.pal(6, "PiYG")
-cols_spectral <- brewer.pal(6, "Spectral")
-col_highlight <- cols_pink_green[2]
-df_pvalues <- data.frame(round(m_pvalues, 3))
-
-df_pvalues %>%
-  mutate_all(~cell_spec(.x, color = case_when(
-  .x <= 0.01 ~ cols_spectral[1],
-  .x <= 0.05 & .x > 0.01 ~ cols_spectral[2],
-  .default = "black"))) %>%
-  kbl(booktabs = T, linesep = "", escape = F) %>%
-  kable_paper(full_width = T) %>%
-  footnote(general = c("Highlighted in red p-values <= 0.01", "Highlighted in orange p-values <= 0.05"))
-```

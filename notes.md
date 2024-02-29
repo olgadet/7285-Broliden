@@ -1,5 +1,35 @@
 # Mtg notes
 
+# ToDo
+
+- EDA, for V2 add HIVstatus
+- EDA, re-run analysis after removing subject with chlamydia
+- modelling: V2, V3
+  - number of DEGs at different levels for BV 0 vs. 2, 0 vs. 1 and 1 vs. 2
+  - export complete table
+  - Venn diagram
+  - depending on the results, heatmaps
+
+
+## 2024-02-20
+
+- Remove PatID 3943, has Chlamydia
+- Prepare data sets separately for V2, V3 and paired V2 and V3
+- Add HIV status (positive and negative) to EDA. Ca. 10% of subjects are HIV positive. We may want to exclude them depending on the PCA.
+  - comment: only relevant for V2, no HIVpos for V3 after matching with available RNA-seq data and excluding samples with missing BVs
+- For V2 and V3, done separately: compare BV 0 vs. 2, 0 vs. 1, 1 vs. 2; number of DEGs, heatmaps  
+- For paired V2 and V3: count how many samples we have depending on the change, i.e. stay the same/improve/deteriorate
+  
+
+## Questions
+
+- missing data: just BV diagnosis or also Nugent scores?
+- we cannot compare V2 vs. V3 because it is confounded with batch
+
+## Notes
+
+- mixed effect models: add batch or time-point as covariate, compare groups ok based from talking to Eva
+
 ## ToDo
 
 - EDA: normalized counts by BV, V2 and V3 separately (age, Nugent score)
@@ -24,7 +54,7 @@
 
 - EDA with PCA
   - separate for V2 and V3, color-coded by groups (healthy, intermediate, BV), Nudget scores), potentially recoded (healthy .vs BV excluding intermediate)
-  - summary stats of BV at V2 and V3, how many stay the same, how many change groups etc. 
+  - summary stats of BV at V2 and V3, how many stay the same, how many change groups etc.
   - think about the statistical models (check with Eva)
 - Later on: statistical modelling and heatmap
 
