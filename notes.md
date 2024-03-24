@@ -1,6 +1,21 @@
 # Mtg notes
 
-# ToDo
+## ToDo
+
+- upload results to drive
+- email Alexandra
+
+model for V3 and V2 separately
+
+- BV 0 vs. 2, 0 vs. 1, 1 vs. 2, include age as covariate (done)
+- number of DEGs at different levels (done)
+- boxplots of top hits (done)
+- Venn diagram (done)
+- export entire table with annotated genes (done)
+- depending on the results, heatmaps (discuss)
+- maybe go terms with gprofiler (discuss)
+
+### previous notes
 
 - EDA, for V2 add HIVstatus
 - EDA, re-run analysis after removing subject with chlamydia
@@ -9,7 +24,6 @@
   - export complete table
   - Venn diagram
   - depending on the results, heatmaps
-
 
 ## 2024-02-20
 
@@ -20,7 +34,6 @@
 - For V2 and V3, done separately: compare BV 0 vs. 2, 0 vs. 1, 1 vs. 2; number of DEGs, heatmaps  
 - For paired V2 and V3: count how many samples we have depending on the change, i.e. stay the same/improve/deteriorate
   
-
 ## Questions
 
 - missing data: just BV diagnosis or also Nugent scores?
@@ -30,7 +43,7 @@
 
 - mixed effect models: add batch or time-point as covariate, compare groups ok based from talking to Eva
 
-## ToDo
+## TODO
 
 - EDA: normalized counts by BV, V2 and V3 separately (age, Nugent score)
 - EDA: normalized counts V2 and V3, together, by RNA-seq batch

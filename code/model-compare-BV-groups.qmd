@@ -1,0 +1,969 @@
+---
+title: "Model: comparing BV groups"
+format: html
+date: "`r format(Sys.time(), '%d %B, %Y')`"    
+toc: true
+toc-expand: 3
+editor: source
+execute: 
+  cache: false
+editor_options: 
+  chunk_output_type: console
+knitr:
+  opts_chunk: 
+    echo: true
+    message: false
+    warning: false
+    code-fold: true
+    include: true
+    collapse: true
+---
+
+```{r}
+#| label: setup-env
+
+# Set-up R environment
+rm(list=ls())
+
+library(knitr)
+library(tidyverse)
+library(readxl)
+library(DT)
+library(arsenal)
+library(gtsummary)
+library(RColorBrewer)
+library(edgeR)
+library(plotly)
+library(kableExtra)
+library(ggpmisc)
+library(ggpubr)
+library(ggvenn)
+library(ggVennDiagram)
+library(ggthemes)
+library(scales)
+
+# load functions
+source("functions.R")
+```
+
+
+```{r}
+
+# define script name
+script_name <- "model-compare-BV-groups"
+
+# prepare directory to export result tables
+dir_exports <- paste("../results/", script_name, "/", sep="")
+if (!dir.exists(dir_exports)){
+  dir.create(dir_exports)
+}
+
+
+```
+
+# Introduction
+
+The aim of this workbook is to compare BV groups (BV 0 vs. 2, BV 0 vs. 1 and BV 1 vs. BV 2), adjusting for age. This is done separately for V3 (follicular phase) and for V2 (luteal phase). HIV-positive subjects are excluded (V2).
+
+# Set graphical theme
+```{r}
+# set graphical theme
+mycols <- brewer.pal(8, "Set1")
+mycols2 <- brewer.pal(8, "Dark2")
+
+text_size <- 12
+mytheme <- theme(legend.title = element_blank(), 
+                 legend.text = element_text(size = text_size),
+                 panel.grid.major = element_blank(), 
+                 panel.grid.minor = element_blank(),
+                 axis.text = element_text(size = text_size),
+                 axis.title = element_text(size = text_size), 
+                 strip.background =element_rect(fill=c("white"), colour = "white"), 
+                 strip.text = element_text(colour = 'black', size = text_size + 1))
+```
+
+# Load data
+```{r}
+# load data
+file <- "../data/processed/data.RData"
+load(file)
+rm(counts_norm_v2, counts_norm_v3, counts_norm_v2v3)
+
+# convert counts to matrix (V3)
+m_counts_v3 <- counts_v3 %>%
+  select(!c("Chr", "Start", "End", "Strand", "Length")) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix() %>%
+  print()
+
+# convert counts to matrix, remove HIVpos (V2) and samples with missing age
+samples_flr <- df_meta %>%
+  filter(HIVstatus == "pos" | is.na(age) == TRUE) %>%
+  pull(PatID)
+
+m_counts_v2 <- counts_v2 %>%
+  select(!c("Chr", "Start", "End", "Strand", "Length")) %>%
+  column_to_rownames("Geneid") %>%
+  select(!all_of(samples_flr)) %>%
+  as.matrix() 
+
+# create corresponding meta data
+df_meta_v3 <- df_meta %>%
+  filter(PatID %in% colnames(m_counts_v3))
+
+df_meta_v2 <- df_meta %>%
+  filter(PatID %in% colnames(m_counts_v2))
+
+```
+
+# V3
+
+## Filter lowly expressed genes
+```{r}
+#| label: fig-density
+#| fig.cap: "Density plots of gene expression data, before and after filtering."
+#| fig-width: 12
+#| fig-height: 6
+
+# input data
+matrix_counts <- m_counts_v3
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# plot densities
+nsamples <- ncol(x_cpm)
+cols <- brewer.pal(9, "BuGn")
+
+par(mfrow=c(1, 2))
+# raw
+
+plot(density(x_cpm[,1]), lwd=2, ylim=c(0,1), las=1, main="", xlab="", cex.axis = 1.5, cex.main = 1.5,  cex.lab = 1.5)
+title(main="Raw data", xlab="log-cpm", cex = 1.5, cex.lab = 1.5, cex.main = 1.5)
+for (i in 2:nsamples){
+  den <- density(x_cpm[,i])
+  lines(den$x, den$y,  lwd=2, col = cols[i])
+}
+
+# filtered
+mincount = 10
+plot(density(x_cpm_flr[,1]), lwd=2, ylim=c(0,0.5), las=2, main="", xlab="", cex.axis = 1.5, cex.main = 1.5,  cex.lab = 1.5)
+title(main=paste("Filtered  data min.count = ", mincount, sep=""), xlab="log-cpm", cex = 1.5, cex.lab = 1.5, cex.main = 1.5)
+for (i in 2:nsamples){
+  den <- density(x_cpm_flr[,i])
+  lines(den$x, den$y,  lwd=2, col = cols[i])
+}
+
+```
+
+## Normalize
+```{r}
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+```
+
+## Fit model
+```{r}
+
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+```
+
+## Number of DEGs
+```{r}
+#| label: tbl-degs-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-degs-unadjusted-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, unadjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+summary(decideTests_unadj) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+## Combine groups results
+```{r}
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+  
+```
+
+## Export results
+```{r}
+#| eval: false
+
+file_save <- paste(dir_exports, "result-v3.csv", sep = "")
+write_csv(res, file = file_save)
+
+```
+
+## Venn diagram
+
+::: {.panel-tabset}
+
+### p-value < 0.05
+```{r}
+#| label: fig-vd-v3
+#| fig-cap: "Venn diagram for DEGs, adjusted p-value < 0.05, lfc = 0."
+
+BV2_vs_BV0 <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  pull(ENSG)
+
+BV2_vs_BV1 <- res %>%
+  filter(DEGs.BV2_vs_BV1 != 0) %>%
+  pull(ENSG)
+
+l <- list(BV2_vs_BV0 = BV2_vs_BV0, BV2_vs_BV1 = BV2_vs_BV1)
+
+palname = "Classic Color Blind"
+pal <- tableau_color_pal(palname)
+cols <- pal(3)
+
+ggvenn(l, 
+       fill_color = cols)
+
+```
+
+### unadjusted p-value < 0.05
+```{r}
+#| label: fig-vd-unadjusted-v3
+#| fig-cap: "Venn diagram for DEGs, unadjusted p-value < 0.05, lfc = 0."
+
+BV2_vs_BV0 <- res %>%
+  filter(DEGs.BV2_vs_BV0.unadj != 0) %>%
+  pull(ENSG)
+
+BV1_vs_BV0 <- res %>%
+  filter(DEGs.BV1_vs_BV0.unadj != 0) %>%
+  pull(ENSG)
+
+BV2_vs_BV1 <- res %>%
+  filter(DEGs.BV2_vs_BV1.unadj != 0) %>%
+  pull(ENSG)
+
+l <- list(BV2_vs_BV0 = BV2_vs_BV0, BV1_vs_BV0 = BV1_vs_BV0, BV2_vs_BV1 = BV2_vs_BV1)
+
+ggvenn(l, 
+       fill_color = cols)
+
+```
+
+:::
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV1 vs. BV0
+```{r}
+#| label: fig-bv1-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV1_vs_BV0.unadj != 0) %>%
+  arrange(adj.P.Val.B1_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV1
+```{r}
+#| label: fig-bv2-bv1
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV1 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B1) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+## Boxplot of top hits (logFC)
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-lfc-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV1 vs. BV0
+```{r}
+#| label: fig-lfc-bv1-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV1_vs_BV0.unadj != 0) %>%
+  arrange(desc(abs(logFC.B1_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV1
+```{r}
+#| label: fig-lfc-bv2-bv1
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV1 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B1))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# V2
+
+## Filter lowly expressed genes
+```{r}
+#| label: fig-density-v2
+#| fig.cap: "Density plots of gene expression data, before and after filtering."
+#| fig-width: 12
+#| fig-height: 6
+
+# input data
+matrix_counts <- m_counts_v2
+data_meta <- df_meta_v2 %>%
+  rename(BV = BV_v2) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# plot densities
+nsamples <- ncol(x_cpm)
+cols <- brewer.pal(9, "BuGn")
+
+par(mfrow=c(1, 2))
+# raw
+
+plot(density(x_cpm[,1]), lwd=2, ylim=c(0,1), las=1, main="", xlab="", cex.axis = 1.5, cex.main = 1.5,  cex.lab = 1.5)
+title(main="Raw data", xlab="log-cpm", cex = 1.5, cex.lab = 1.5, cex.main = 1.5)
+for (i in 2:nsamples){
+  den <- density(x_cpm[,i])
+  lines(den$x, den$y,  lwd=2, col = cols[i])
+}
+
+# filtered
+mincount = 10
+plot(density(x_cpm_flr[,1]), lwd=2, ylim=c(0,0.5), las=2, main="", xlab="", cex.axis = 1.5, cex.main = 1.5,  cex.lab = 1.5)
+title(main=paste("Filtered  data min.count = ", mincount, sep=""), xlab="log-cpm", cex = 1.5, cex.lab = 1.5, cex.main = 1.5)
+for (i in 2:nsamples){
+  den <- density(x_cpm_flr[,i])
+  lines(den$x, den$y,  lwd=2, col = cols[i])
+}
+
+```
+
+## Normalize
+```{r}
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+```
+
+## Fit model
+```{r}
+
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+```
+
+## Number of DEGs
+```{r}
+#| label: tbl-degs-v2
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-degs-unadjusted-v2
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, unadjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+summary(decideTests_unadj) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+## Combine groups results
+```{r}
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+  
+```
+
+## Export results
+```{r}
+#| eval: false
+
+file_save <- paste(dir_exports, "result-v2.csv", sep = "")
+write_csv(res, file = file_save)
+
+```
+
+## Venn diagram
+
+::: {.panel-tabset}
+
+### unadjusted p-value < 0.05
+```{r}
+#| label: fig-vd-unadjusted-v2
+#| fig-cap: "Venn diagram for DEGs, unadjusted p-value < 0.05, lfc = 0."
+
+BV2_vs_BV0 <- res %>%
+  filter(DEGs.BV2_vs_BV0.unadj != 0) %>%
+  pull(ENSG)
+
+BV1_vs_BV0 <- res %>%
+  filter(DEGs.BV1_vs_BV0.unadj != 0) %>%
+  pull(ENSG)
+
+BV2_vs_BV1 <- res %>%
+  filter(DEGs.BV2_vs_BV1.unadj != 0) %>%
+  pull(ENSG)
+
+l <- list(BV2_vs_BV0 = BV2_vs_BV0, BV1_vs_BV0 = BV1_vs_BV0, BV2_vs_BV1 = BV2_vs_BV1)
+
+palname = "Classic Color Blind"
+pal <- tableau_color_pal(palname)
+cols <- pal(3)
+
+ggvenn(l, 
+       fill_color = cols)
+
+```
+
+:::
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0.unadj != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV1 vs. BV0
+```{r}
+#| label: fig-bv1-bv0-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV1_vs_BV0.unadj != 0) %>%
+  arrange(adj.P.Val.B1_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV1
+```{r}
+#| label: fig-bv2-bv1-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV1.unadj != 0) %>%
+  arrange(adj.P.Val.B2_vs_B1) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+
+## Boxplot of top hits (logFC)
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-lfc-bv2-bv0-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0.unadj != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV1 vs. BV0
+```{r}
+#| label: fig-lfc-bv1-bv0-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV1_vs_BV0.unadj != 0) %>%
+  arrange(desc(abs(logFC.B1_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV1
+```{r}
+#| label: fig-lfc-bv2-bv1-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV1.unadj != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B1))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
