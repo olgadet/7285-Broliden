@@ -564,6 +564,8 @@ matrix_counts <- m_counts_v2
 data_meta <- df_meta_v2 %>%
   rename(BV = BV_v2) 
 
+
+
 # create edgeR object
 BV <- data_meta$BV
 age <- data_meta$age

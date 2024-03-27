@@ -1,29 +1,16 @@
 # Mtg notes
 
-## ToDo
+## 2024-03-27
 
-- upload results to drive
-- email Alexandra
-
-model for V3 and V2 separately
-
-- BV 0 vs. 2, 0 vs. 1, 1 vs. 2, include age as covariate (done)
-- number of DEGs at different levels (done)
-- boxplots of top hits (done)
-- Venn diagram (done)
-- export entire table with annotated genes (done)
-- depending on the results, heatmaps (discuss)
-- maybe go terms with gprofiler (discuss)
-
-### previous notes
-
-- EDA, for V2 add HIVstatus
-- EDA, re-run analysis after removing subject with chlamydia
-- modelling: V2, V3
-  - number of DEGs at different levels for BV 0 vs. 2, 0 vs. 1 and 1 vs. 2
-  - export complete table
-  - Venn diagram
-  - depending on the results, heatmaps
+- Check: It is suspicious that there is nothing significant in V2 and there is in V3 (adj p-values < 0.05, lfc = 0)
+- V2 was sampled first, then 2 weeks of no sex break, prior V3 sampling
+- Double-check code
+- See if findings from V3 hold in V2; fit model only using DEGs from V3, check top plots, check logFC summary stats
+- Already in the meeting tried accounting for E2 and P4, both should be elevated in V2 (did not help, but double-check this)
+- Send Alexandra link to box for the hormone project
+- Send Alexandra link to explanation about BH correction method
+- Next steps would be to make heatmaps, functional enrichment
+- Further: paired design BV 0 - 2 (n = 3) and BV 2 - 0 (n = 8)
 
 ## 2024-02-20
 
