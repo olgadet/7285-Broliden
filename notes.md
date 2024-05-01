@@ -1,5 +1,13 @@
 # Mtg notes
 
+## ToDo
+
+- double-check code for V2
+- compare top V3 transcripts vs. top V2 transcripts, keep directions of up and down-regulated
+- take V3 transcripts: BV2 vs. BV 0 and fit model on V2 data: compare the results (how?), logFC directions, p-values?
+- fix the links and BH correction method explanation
+- get back to Alexandra!
+
 ## 2024-03-27
 
 - Check: It is suspicious that there is nothing significant in V2 and there is in V3 (adj p-values < 0.05, lfc = 0)

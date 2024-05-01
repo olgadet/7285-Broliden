@@ -1,0 +1,732 @@
+---
+title: "Model: comparing BV groups, address no DEGs in V2"
+format: html
+date: "`r format(Sys.time(), '%d %B, %Y')`"    
+toc: true
+toc-expand: 3
+editor: source
+execute: 
+  cache: false
+editor_options: 
+  chunk_output_type: console
+knitr:
+  opts_chunk: 
+    echo: true
+    message: false
+    warning: false
+    code-fold: true
+    include: true
+    collapse: true
+---
+
+```{r}
+#| label: setup-env
+
+# Set-up R environment
+rm(list=ls())
+
+library(knitr)
+library(tidyverse)
+library(readxl)
+library(DT)
+library(arsenal)
+library(gtsummary)
+library(RColorBrewer)
+library(edgeR)
+library(plotly)
+library(kableExtra)
+library(ggpmisc)
+library(ggpubr)
+library(ggvenn)
+library(ggVennDiagram)
+library(ggthemes)
+library(scales)
+
+# load functions
+source("functions.R")
+```
+
+
+```{r}
+
+# define script name
+script_name <- "model-compare-BV-groups-address-no-DEGs-in-V2"
+
+# prepare directory to export result tables
+dir_exports <- paste("../results/", script_name, "/", sep="")
+if (!dir.exists(dir_exports)){
+  dir.create(dir_exports)
+}
+
+
+```
+
+# Introduction
+
+The aim of this workbooks is to investigate why we are not seeing any DEGs in V2 (luteal phase) when comparing BV groups. We will focus on comparing results from V3 (follicular phase) and V2 (luteal phase) when it comes to differences in gene expression between BV = 2 and BV = 0 groups. 
+
+Comparisons: 
+
+- top transcripts based on individual V3 and V2 results
+- fitting V2 model based on transcripts found in V3 only
+
+
+# Set graphical theme
+```{r}
+# set graphical theme
+mycols <- brewer.pal(8, "Set1")
+mycols2 <- brewer.pal(8, "Dark2")
+
+text_size <- 12
+mytheme <- theme(legend.title = element_blank(), 
+                 legend.text = element_text(size = text_size),
+                 panel.grid.major = element_blank(), 
+                 panel.grid.minor = element_blank(),
+                 axis.text = element_text(size = text_size),
+                 axis.title = element_text(size = text_size), 
+                 strip.background =element_rect(fill=c("white"), colour = "white"), 
+                 strip.text = element_text(colour = 'black', size = text_size + 1))
+```
+
+# Load data
+```{r}
+# load data
+file <- "../data/processed/data.RData"
+load(file)
+rm(counts_norm_v2, counts_norm_v3, counts_norm_v2v3)
+
+# convert counts to matrix (V3)
+m_counts_v3 <- counts_v3 %>%
+  select(!c("Chr", "Start", "End", "Strand", "Length")) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix() 
+
+# convert counts to matrix, remove HIVpos (V2) and samples with missing age
+samples_flr <- df_meta %>%
+  filter(HIVstatus == "pos" | is.na(age) == TRUE) %>%
+  pull(PatID)
+
+m_counts_v2 <- counts_v2 %>%
+  select(!c("Chr", "Start", "End", "Strand", "Length")) %>%
+  column_to_rownames("Geneid") %>%
+  select(!all_of(samples_flr)) %>%
+  as.matrix() 
+
+# create corresponding meta data
+df_meta_v3 <- df_meta %>%
+  filter(PatID %in% colnames(m_counts_v3))
+
+df_meta_v2 <- df_meta %>%
+  filter(PatID %in% colnames(m_counts_v2))
+
+```
+
+# V3
+
+## Filter lowly expressed genes
+```{r}
+#| label: fig-density
+#| fig.cap: "Density plots of gene expression data, before and after filtering."
+#| fig-width: 12
+#| fig-height: 6
+
+# input data
+matrix_counts <- m_counts_v3
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# Fit model
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+qlf_v3 <- qlf
+
+```
+
+## Number of DEGs
+```{r}
+#| label: tbl-degs-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-degs-unadjusted-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, unadjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+summary(decideTests_unadj) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+## Combine groups results
+```{r}
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+  
+res_v3 <- res
+```
+
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+
+### BV2 vs. BV0 (logFC)
+```{r}
+#| label: fig-lfc-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# V2
+
+## Filter lowly expressed genes
+```{r}
+#| label: fig-density-v2
+#| fig.cap: "Density plots of gene expression data, before and after filtering."
+#| fig-width: 12
+#| fig-height: 6
+
+# input data
+matrix_counts <- m_counts_v2
+data_meta <- df_meta_v2 %>%
+  rename(BV = BV_v2) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# Fit model
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+qlf_v2 <- qlf
+
+```
+
+## Number of DEGs
+```{r}
+#| label: tbl-degs-v2
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-degs-unadjusted-v2
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, unadjusted p-value < 0.05, no lfc threshold."
+
+# DEGs summary
+lfc = 0
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+summary(decideTests_unadj) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+## Combine groups results
+```{r}
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+
+res_v2 <- res
+  
+```
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p-value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0.unadj != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV0 (logFC)
+```{r}
+#| label: fig-lfc-bv2-bv0-v2
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0.unadj != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# Compare top transcripts
+
+## Venn diagram
+Checking overlap of DEGs found in V3 (adj.p.value < 0.05) and transcripts in V2 (p.value < 0.05)
+
+::: {.panel-tabset}
+
+### Overall
+```{r}
+#| label: fig-venn
+#| fig-cap: "Venn diagram of DEGs in V3 (adj. p.val < 0.05) and V2 (p.val < 0.05)"
+
+# plot Venn diagram of DEGs.BV2_vs_BV0 in res_v3 and res_v2
+degs_v3 <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  pull(ENSG)
+
+degs_v2 <- res_v2 %>%
+  filter(DEGs.BV2_vs_BV0.unadj != 0) %>%
+  pull(ENSG)
+
+# make Venn diagram with ggvenn
+palname = "Classic Color Blind"
+pal <- tableau_color_pal(palname)
+cols <- pal(4)
+
+l <- list(v3 = degs_v3, v2 = degs_v2)
+ggvenn(l, 
+       fill_color = cols)
+```
+
+### Down-regulated
+```{r}
+#| label: fig-venn-down
+#| fig-cap: "Venn diagram of down-regulated DEGs in V3 (adj. p.val < 0.05) and V2 (p.val < 0.05)"
+
+# plot Venn diagram of DEGs.BV2_vs_BV0 in res_v3 and res_v2
+degs_v3_down <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 == -1) %>%
+  pull(ENSG)
+
+degs_v3_up <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 == 1) %>%
+  pull(ENSG)
+
+degs_v2_down <- res_v2 %>%
+  filter(DEGs.BV2_vs_BV0.unadj == -1) %>%
+  pull(ENSG)
+
+degs_v2_up <- res_v2 %>%
+  filter(DEGs.BV2_vs_BV0.unadj == 1) %>%
+  pull(ENSG)
+
+# make Venn diagram with ggvenn for down-regulated genes
+l_down <- list(v3_down = degs_v3_down, v2_down = degs_v2_down)
+ggvenn(l_down, 
+       fill_color = cols)
+
+```
+
+### Up-regulated
+```{r}
+# make Venn diagram with ggvenn for up_regulated genes
+l_up <- list(v3_up = degs_v3_up, v2_up = degs_v2_up)
+ggvenn(l_up, 
+       fill_color = cols)
+```
+
+:::
+
+## Concordant and discordant pairs
+Report number of concordant and discordant pairs of DEGs in V3 and V2, adj.p.val < 0.05 and p.val < 0.05 respectively.
+
+```{r}
+#| label: tbl-concordant-discordant
+#| tbl-cap: "Number of concordant and discordant pairs of DEGs in V3 and V2, adj.p.val < 0.05 and p.val < 0.05 respectively."
+
+# calculate number of concordant pairs based on DEGs.B2_vs_B0 and DEGs.B2_vs_B0.unadj
+concordant_down <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 == -1) %>% 
+  filter(ENSG %in% res_v2$ENSG[res_v2$DEGs.BV2_vs_BV0.unadj == -1]) %>%
+  nrow()
+
+concordant_up <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 == 1) %>%
+  filter(ENSG %in% res_v2$ENSG[res_v2$DEGs.BV2_vs_BV0.unadj == 1]) %>%
+  nrow()
+
+# calculate number of discordant pairs
+discordant_down <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 == -1) %>%
+  filter(ENSG %in% res_v2$ENSG[res_v2$DEGs.BV2_vs_BV0.unadj == 1]) %>%
+  nrow()
+
+discordant_up <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 == 1) %>%
+  filter(ENSG %in% res_v2$ENSG[res_v2$DEGs.BV2_vs_BV0.unadj == -1]) %>%
+  nrow()
+  
+# create table
+data.frame(concordant_down = concordant_down, 
+           concordant_up = concordant_up, 
+           discordant_down = discordant_down, 
+           discordant_up = discordant_up) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+## Ranks of V3 DEGs in V2
+```{r}
+#| label: fig-ranks-v3-degs-v2
+#| fig-cap: "Histogram of ranks of V3 DEGs in V2."
+
+# calculate ranks of V3 DEGs in V2
+ranks <- match(degs_v3, res_v2$ENSG) %>% print()
+hist(ranks)
+
+top_ranks <- sort(ranks, decreasing = FALSE) %>% head(100)
+print(top_ranks)
+
+```
+
+# Fit V2 model based on V3 DEGs
+
+```{r}
+#| label: fig-V2-model-V3-DEGs
+
+degs_v3 <- res_v3 %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  pull(ENSG)
+
+# input data
+matrix_counts <- m_counts_v2
+data_meta <- df_meta_v2 %>%
+  rename(BV = BV_v2) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# keep only transcripts detected as DEGs in V3
+idx <- match(degs_v3, rownames(data_cds_flr$counts))
+idx <- na.omit(idx)
+data_cds_flr <- data_cds_flr[idx,,keep.lib.sizes=FALSE]
+print(length(idx))
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# Fit model
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+qlf_v2_degs_v3 <- qlf
+
+```
+
+## Number of DEGs
+```{r}
+#| label: tbl-degs-v2-degs-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold. Model fitted on transcripts found in V3."
+
+# DEGs summary
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-degs-unadjusted-v2-degs-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, unadjusted p-value < 0.05, no lfc threshold. model fitted on transcripts found in V3."
+
+# DEGs summary
+lfc = 0
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+summary(decideTests_unadj) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+
