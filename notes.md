@@ -1,12 +1,17 @@
 # Mtg notes
 
-## ToDo
+- add hormones to V3? Potentially loosing samples due to missing data
 
-- double-check code for V2
-- compare top V3 transcripts vs. top V2 transcripts, keep directions of up and down-regulated
-- take V3 transcripts: BV2 vs. BV 0 and fit model on V2 data: compare the results (how?), logFC directions, p-values?
-- fix the links and BH correction method explanation
-- get back to Alexandra!
+## 2024-05-07
+
+- (done) share code for hormone project, .R files only
+- BV project: double-check hormone coding (why I have so many missing data?)(found a typo)
+- (not needed) merge data from Alexandra (to sent)
+- Re-run analyses with hormones (double check EDA, group comparisons scripts, were they affected?). Re-run group comparisons with hormones.
+- Try analysis with hormonones, with and without imputing missing data with knnimupte(); which columns to take to impute? need to think
+- Share .csv with results with AA
+- Check with Alexandra via email to continue working on the downstream analyses
+- Analyses discussed: calling genotypes from RNA-seq data
 
 ## 2024-03-27
 
