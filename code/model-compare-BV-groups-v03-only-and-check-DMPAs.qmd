@@ -1,0 +1,731 @@
+---
+title: "Model: comparing BV groups"
+format: html
+date: "`r format(Sys.time(), '%d %B, %Y')`"    
+toc: true
+toc-expand: 3
+editor: source
+execute: 
+  cache: false
+editor_options: 
+  chunk_output_type: console
+knitr:
+  opts_chunk: 
+    echo: true
+    message: false
+    warning: false
+    code-fold: true
+    include: true
+    collapse: true
+---
+
+```{r}
+#| label: setup-env
+
+# Set-up R environment
+rm(list=ls())
+
+library(knitr)
+library(tidyverse)
+library(readxl)
+library(DT)
+library(arsenal)
+library(gtsummary)
+library(RColorBrewer)
+library(edgeR)
+library(plotly)
+library(kableExtra)
+library(ggpmisc)
+library(ggpubr)
+library(ggvenn)
+library(ggVennDiagram)
+library(ggthemes)
+library(scales)
+
+# load functions
+source("functions.R")
+```
+
+
+```{r}
+
+# define script name
+script_name <- "model-compare-BV-groups-in-V03-only-and-check-DMPAs"
+
+# prepare directory to export result tables
+dir_exports <- paste("../results/", script_name, "/", sep="")
+if (!dir.exists(dir_exports)){
+  dir.create(dir_exports)
+}
+
+
+```
+
+# Introduction
+
+The aim of this workbook is to compare BV groups, BV=2 (BV) vs. BV=0 (Normal). 
+
+- no accounting for any covariates (baseline, done previously) (model I)
+- adjusting for DMPAs (contraceptives) (model II)
+- and after excluding samples with DMPAs (model III)
+
+# Set graphical theme
+```{r}
+# set graphical theme
+mycols <- brewer.pal(8, "Set1")
+mycols2 <- brewer.pal(8, "Dark2")
+
+text_size <- 12
+mytheme <- theme(legend.title = element_blank(), 
+                 legend.text = element_text(size = text_size),
+                 panel.grid.major = element_blank(), 
+                 panel.grid.minor = element_blank(),
+                 axis.text = element_text(size = text_size),
+                 axis.title = element_text(size = text_size), 
+                 strip.background =element_rect(fill=c("white"), colour = "white"), 
+                 strip.text = element_text(colour = 'black', size = text_size + 1))
+```
+
+# Load data
+```{r}
+# load data
+file <- "../data/processed/data.RData"
+load(file)
+rm(counts_norm_v2, counts_norm_v3, counts_norm_v2v3)
+
+# convert counts to matrix (V3)
+m_counts_v3 <- counts_v3 %>%
+  select(!c("Chr", "Start", "End", "Strand", "Length")) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix() 
+
+# convert counts to matrix, remove HIVpos (V2) and samples with missing age
+samples_flr <- df_meta %>%
+  filter(HIVstatus == "pos" | is.na(age) == TRUE) %>%
+  pull(PatID)
+
+# create corresponding meta data
+df_meta_v3 <- df_meta %>%
+  filter(PatID %in% colnames(m_counts_v3))
+
+```
+
+```{r}
+#| label: add-DMPAs-data
+
+# load in meta data
+data_contraception <- read_excel("../data/box/KEY_V3_BEA19P035_KB_samples-modified-filled-in-missing-PatID3943.xlsx", sheet = "samples") %>%
+  dplyr::select(File, Contraception)
+
+# clincial data for v3
+df_clin_v3 <- df_meta_v3 %>%
+  rename(BV = BV_v3, 
+         Nugent = Nugent_v2) %>%
+  left_join(data_contraception, by = c("countfile_v3" = "File"))
+
+```
+
+# Summary of clinical data
+```{r}
+#| label: tbl-summary-v3
+#| tbl-cap: "Summary of clinical data for V3, including DMPA"
+
+df_clin_v3 %>%
+  dplyr::select(c(BV, Nugent, age, HIVstatus, Contraception)) %>% 
+  tbl_summary(
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-summary-v3-BV-vs-DMPA
+#| tbl-cap: "Summary of clinical data for V3, including DMPA, grouped by BV status"
+
+df_clin_v3 %>%
+  dplyr::select(c(BV, Contraception)) %>% 
+  tbl_summary(by = BV,
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+```
+
+
+# Model I
+
+```{r}
+#| label: tbl-degs-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# input data
+matrix_counts <- m_counts_v3
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# plot densities
+nsamples <- ncol(x_cpm)
+cols <- brewer.pal(9, "BuGn")
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+# combine group results
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+
+# DEGs summary
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+res_model_1 <- res
+
+```
+
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p.value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV0 (logFC)
+```{r}
+#| label: fig-lfc-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# Model II
+
+```{r}
+#| label: tbl-degs-v3-model2
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# input data
+matrix_counts <- m_counts_v3
+
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) %>%
+  left_join(data_contraception, by = c("countfile_v3" = "File")) %>% 
+  mutate(DMPA = as.factor(Contraception)) %>%
+  mutate(DMPA = fct_recode(Contraception, 
+                           "No" = "no HC",
+                           "Yes" = "DMPA")) %>%
+  mutate(DMPA = fct_relevel(DMPA, "No")) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+DMPA <- data_meta$DMPA
+
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age + DMPA)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# plot densities
+nsamples <- ncol(x_cpm)
+cols <- brewer.pal(9, "BuGn")
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+# combine group results
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+
+# DEGs summary
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+res_model_2 <- res
+
+```
+
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0-DMPA
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p.value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV0 (logFC)
+```{r}
+#| label: fig-lfc-bv2-bv0-DMPA
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# Model III
+
+```{r}
+#| label: tbl-degs-v3-model3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# input data
+matrix_counts <- m_counts_v3
+
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) %>%
+  left_join(data_contraception, by = c("countfile_v3" = "File")) %>% 
+  mutate(DMPA = as.factor(Contraception)) %>%
+  mutate(DMPA = fct_recode(Contraception, 
+                           "No" = "no HC",
+                           "Yes" = "DMPA")) %>%
+  mutate(DMPA = fct_relevel(DMPA, "No")) %>%
+  filter(DMPA!= "Yes") # exclude samples with DMPA
+
+# remove samples with DMPA from matrix_counts
+matrix_counts <- matrix_counts[, colnames(matrix_counts) %in% data_meta$PatID]
+identical(colnames(matrix_counts), data_meta$PatID)
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# plot densities
+nsamples <- ncol(x_cpm)
+cols <- brewer.pal(9, "BuGn")
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+# combine group results
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+
+# DEGs summary
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+res_model_3 <- res
+
+```
+
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0-model-3
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p.value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV0 (logFC)
+```{r}
+#| label: fig-lfc-bv2-bv0-model-3
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# Venn Diagram
+
+### p-value < 0.05
+```{r}
+#| label: fig-vd
+#| fig-cap: "Venn diagram for DEGs, adjusted p-value < 0.05, lfc = 0; Model I: baseline model accounting for age, Model II, accounting for age and DMPA, and Model III, accounting for age but excluding samples with DMPA."
+
+m1 <- res_model_1 %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  pull(ENSG)
+
+m2 <- res_model_2 %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  pull(ENSG)
+
+m3 <- res_model_3 %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  pull(ENSG)
+
+l <- list(`Model I` = m1, `Model II` = m2, `Model III` = m3)
+
+palname = "Classic Color Blind"
+pal <- tableau_color_pal(palname)
+cols <- pal(3)
+
+ggvenn(l, 
+       fill_color = cols)
+
+```
+

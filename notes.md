@@ -1,12 +1,51 @@
 # Mtg notes
 
-- add hormones to V3? Potentially loosing samples due to missing data
+## 2025-05-28
+
+Current:
+
+- move EDA new parts to diffExp
+- run 3 models: as before, including DMPA as covariate, subset excluding DMPAs
+- Venn diagram, compare the three
+- Boxplots
+- Heatmaps
+  - overall expression, 3 BVs groups, add DMPs annotations
+  - overall expression, 2 BVs groups, add DMPs annotations
+  - overall expression adjusting for DMPA if there is effect, 3 and 2 BVs
+  - overall expression excluding DMPAs, 3 and 2 BVs groups
+
+Comments
+
+- we have been adjusting for age before, so kept it for now, but can easily remove and re-run 
+
+
+Mtg with Alexandra (Zoom)
+
+- let's focus on wrapping things up, by looking at BV2 vs. BV0, in V3, as there were no differences in V2
+- The lack of differences in V2 makes sense now, should be an interesting to report too (AS)
+- To wrap-up the study, we need
+  - check V3 for effect of contraceptives
+  - visualize results in heatmap
+  - run gene set enrichment (to be discussed later)
+
+ToDo
+  
+- send clinical file name to double check we are using the same
+- re-run differential expression for V3
+  - exclude HIVp samples, and adjust for contraceptives group
+  - exclude HIVp samples, and exclude contraceptives samples
 
 ## 2024-05-07
 
+- (done) refresh what has been done
+
+- re-run all scripts by including data sent from AA to account for issues with NAs...and for addressing no DEGs in V2 by including hormones, fix adding hormones as covariates to V3 model
+
+- for V2, compare DMPA vs. no HC including age and time in sex work as covariates
+ 
 - (done) share code for hormone project, .R files only
 - BV project: double-check hormone coding (why I have so many missing data?)(found a typo)
-- (not needed) merge data from Alexandra (to sent)
+- check and potentially merge data from Alexandra
 - Re-run analyses with hormones (double check EDA, group comparisons scripts, were they affected?). Re-run group comparisons with hormones.
 - Try analysis with hormonones, with and without imputing missing data with knnimupte(); which columns to take to impute? need to think
 - Share .csv with results with AA

@@ -38,7 +38,6 @@ Full support description available via [Redmine](https://projects.nbis.se/issues
 -   NBIS staff: Olga Dethlefsen \<[olga.dethlefsen\@nbis.se](mailto:olga.dethlefsen@nbis.se){.email}\>
 :::
 
-
 ## Available data
 
 ### V2 and V3
@@ -100,15 +99,15 @@ For the V3 samples, plasma E2 and P4 levels were measured using electrochemilumi
 
 ### Data wrangling
 
--   [prepare-data-sets.html](prepare-data-sets.html)
+- [prepare-data-sets.html](prepare-data-sets.html)
 
 ### EDA, exploratory data analysis
 
--   [eda.html](eda.html)
+- [eda.html](eda.html)
 
 ### Modeling
 
--   [model-compare-BV-groups.html](model-compare-BV-groups.html)
+- [model-compare-BV-groups.html](model-compare-BV-groups.html)
 - [model-compare-BV-groups-address-no-DEGs-in-V2.html](model-compare-BV-groups-address-no-DEGs-in-V2.html)
 - [model-compare-BV-groups-address-no-DEGs-in-V2-add-E2-P4.html](model-compare-BV-groups-address-no-DEGs-in-V2-add-E2-P4.html)
 
