@@ -154,6 +154,8 @@ df_clin_v3 %>%
 
 # Model I
 
+*What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for age?*
+
 ```{r}
 #| label: tbl-degs-v3
 #| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
@@ -244,6 +246,8 @@ summary(decideTests) %>%
 
 res_model_1 <- res
 
+write_csv(res_model_1, paste0(dir_exports, "res_model_1.csv"))
+
 ```
 
 
@@ -328,6 +332,8 @@ data_plot %>%
 :::
 
 # Model II
+
+*What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for differences in DMPA and age?*
 
 ```{r}
 #| label: tbl-degs-v3-model2
@@ -427,9 +433,9 @@ summary(decideTests) %>%
   kable_styling()
 
 res_model_2 <- res
+write_csv(res_model_2, paste0(dir_exports, "res_model_2.csv"))
 
 ```
-
 
 ## Boxplot of top hits
 
@@ -512,6 +518,8 @@ data_plot %>%
 :::
 
 # Model III
+
+*Subset analysis, exluding DMPA samples. What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for age?*
 
 ```{r}
 #| label: tbl-degs-v3-model3
@@ -662,7 +670,7 @@ data_plot %>%
 
 ### BV2 vs. BV0 (logFC)
 ```{r}
-#| label: fig-lfc-bv2-bv0-model-3
+#| label: fig-lfc-bv2-bv0-model-4
 #| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
 #| fig-width: 12
 #| fig-height: 12
@@ -728,4 +736,69 @@ ggvenn(l,
        fill_color = cols)
 
 ```
+
+Comments: 
+
+- The smaller amount of DEGs in Model II (accounting for DMPA) could indicate that some genes you initially called DE in Model I were actually associated with DMPA status, not BV itself.
+- Model II measures gene expression changes due to BV after adjusting for the effect of age and DMPA, assuming these effects are the same across BV groups. 
+
+
+# Model IV
+
+*Including interaction terms between DMPA and BV groups*
+
+Including DMPA as a covariate in Model II reduced the number of differentially expressed genes between BV2 and BV0 compared to Model I, suggesting that DMPA may confound the observed group differences. It is possible that the effect of DMPA on gene expression varies across BV groups, in which case a model incorporating interaction terms would be more appropriate to capture both the main effects (group differences) and any effect modification. To investigate this, Model IV was constructed to include interaction terms between BV status and DMPA use, allowing us to test whether the effect of BV changes depending on DMPA use.
+
+```{r}
+#| label: tbl-degs-v3-model4
+#| tbl-cap: "Differential expression results for the interaction term BV2:DMPAyes in the interaction model."
+
+# input data
+matrix_counts <- m_counts_v3
+
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) %>%
+  left_join(data_contraception, by = c("countfile_v3" = "File")) %>% 
+  mutate(DMPA = as.factor(Contraception)) %>%
+  mutate(DMPA = fct_recode(Contraception, 
+                           "No" = "no HC",
+                           "Yes" = "DMPA")) %>%
+  mutate(DMPA = fct_relevel(DMPA, "No")) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+DMPA <- data_meta$DMPA
+
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~ BV * DMPA + age, data = data_meta)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+fit <- eBayes(fit)
+
+# BV2 vs BV0 interaction with DMPA
+interaction_test <- topTable(fit, coef = "BV2:DMPAYes", number = Inf)
+summary(decideTests(fit, coef = "BV2:DMPAYes")) %>%
+  kbl() %>%
+  kable_styling()
+
+```
+
+No genes were found to be significantly differentially expressed for the interaction term (BV2:DMPAy), indicating that the effect of BV2 vs BV0 on gene expression does not significantly differ by DMPA status. This suggests that including an interaction term is not necessary in this context. While adding DMPA as a covariate in Model II changed the number of differentially expressed genes compared to Model I, this is likely because DMPA influences gene expression on its own. These results suggest that DMPA should be included as a covariate, but there is no need to include an interaction term in the model.
 

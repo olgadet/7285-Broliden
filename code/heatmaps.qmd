@@ -1,0 +1,806 @@
+---
+title: "Heatmaps"
+format: html
+date: "`r format(Sys.time(), '%d %B, %Y')`"    
+toc: true
+toc-expand: 3
+editor: source
+execute: 
+  cache: false
+editor_options: 
+  chunk_output_type: console
+knitr:
+  opts_chunk: 
+    echo: true
+    message: false
+    warning: false
+    code-fold: true
+    include: true
+    collapse: true
+---
+
+```{r}
+#| label: setup-env
+
+# Set-up R environment
+rm(list=ls())
+
+library(knitr)
+library(tidyverse)
+library(readxl)
+library(DT)
+library(arsenal)
+library(gtsummary)
+library(RColorBrewer)
+library(edgeR)
+library(plotly)
+library(kableExtra)
+library(ggpmisc)
+library(ggpubr)
+library(ggvenn)
+library(ggVennDiagram)
+library(ggthemes)
+library(scales)
+
+# load functions
+source("functions.R")
+```
+
+
+```{r}
+
+# define script name
+script_name <- "model-compare-BV-groups-in-V03-only-and-check-DMPAs"
+
+# prepare directory to export result tables
+dir_exports <- paste("../results/", script_name, "/", sep="")
+if (!dir.exists(dir_exports)){
+  dir.create(dir_exports)
+}
+
+
+```
+
+# Introduction
+
+The aim of this workbook is to compare BV groups, BV=2 (BV) vs. BV=0 (Normal). 
+
+- no accounting for any covariates (baseline, done previously) (model I)
+- adjusting for DMPAs (contraceptives) (model II)
+- and after excluding samples with DMPAs (model III)
+
+# Set graphical theme
+```{r}
+# set graphical theme
+mycols <- brewer.pal(8, "Set1")
+mycols2 <- brewer.pal(8, "Dark2")
+
+text_size <- 12
+mytheme <- theme(legend.title = element_blank(), 
+                 legend.text = element_text(size = text_size),
+                 panel.grid.major = element_blank(), 
+                 panel.grid.minor = element_blank(),
+                 axis.text = element_text(size = text_size),
+                 axis.title = element_text(size = text_size), 
+                 strip.background =element_rect(fill=c("white"), colour = "white"), 
+                 strip.text = element_text(colour = 'black', size = text_size + 1))
+```
+
+# Load data
+```{r}
+# load data
+file <- "../data/processed/data.RData"
+load(file)
+rm(counts_norm_v2, counts_norm_v3, counts_norm_v2v3)
+
+# convert counts to matrix (V3)
+m_counts_v3 <- counts_v3 %>%
+  select(!c("Chr", "Start", "End", "Strand", "Length")) %>%
+  column_to_rownames("Geneid") %>%
+  as.matrix() 
+
+# convert counts to matrix, remove HIVpos (V2) and samples with missing age
+samples_flr <- df_meta %>%
+  filter(HIVstatus == "pos" | is.na(age) == TRUE) %>%
+  pull(PatID)
+
+# create corresponding meta data
+df_meta_v3 <- df_meta %>%
+  filter(PatID %in% colnames(m_counts_v3))
+
+```
+
+```{r}
+#| label: add-DMPAs-data
+
+# load in meta data
+data_contraception <- read_excel("../data/box/KEY_V3_BEA19P035_KB_samples-modified-filled-in-missing-PatID3943.xlsx", sheet = "samples") %>%
+  dplyr::select(File, Contraception)
+
+# clincial data for v3
+df_clin_v3 <- df_meta_v3 %>%
+  rename(BV = BV_v3, 
+         Nugent = Nugent_v2) %>%
+  left_join(data_contraception, by = c("countfile_v3" = "File"))
+
+```
+
+# Summary of clinical data
+```{r}
+#| label: tbl-summary-v3
+#| tbl-cap: "Summary of clinical data for V3, including DMPA"
+
+df_clin_v3 %>%
+  dplyr::select(c(BV, Nugent, age, HIVstatus, Contraception)) %>% 
+  tbl_summary(
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+
+```
+
+```{r}
+#| label: tbl-summary-v3-BV-vs-DMPA
+#| tbl-cap: "Summary of clinical data for V3, including DMPA, grouped by BV status"
+
+df_clin_v3 %>%
+  dplyr::select(c(BV, Contraception)) %>% 
+  tbl_summary(by = BV,
+              missing_text = "(Missing)") %>%
+  as_kable_extra(booktabs = TRUE) %>%
+  kable_styling()
+```
+
+
+# Model I
+
+*What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for age?*
+
+```{r}
+#| label: tbl-degs-v3
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# input data
+matrix_counts <- m_counts_v3
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# plot densities
+nsamples <- ncol(x_cpm)
+cols <- brewer.pal(9, "BuGn")
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+# combine group results
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+
+# DEGs summary
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+res_model_1 <- res
+
+```
+
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p.value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV0 (logFC)
+```{r}
+#| label: fig-lfc-bv2-bv0
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# Model II
+
+*What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for differences in DMPA and age?*
+
+```{r}
+#| label: tbl-degs-v3-model2
+#| tbl-cap: "Number of differentially down- and up-regulated transcripts, adjusted p-value < 0.05, no lfc threshold."
+
+# input data
+matrix_counts <- m_counts_v3
+
+data_meta <- df_meta_v3 %>%
+  rename(BV = BV_v3) %>%
+  left_join(data_contraception, by = c("countfile_v3" = "File")) %>% 
+  mutate(DMPA = as.factor(Contraception)) %>%
+  mutate(DMPA = fct_recode(Contraception, 
+                           "No" = "no HC",
+                           "Yes" = "DMPA")) %>%
+  mutate(DMPA = fct_relevel(DMPA, "No")) 
+
+# create edgeR object
+BV <- data_meta$BV
+age <- data_meta$age
+DMPA <- data_meta$DMPA
+
+data_cds <- DGEList(matrix_counts, group = BV)
+
+# design matrix
+design_matrix <- model.matrix(~0 + BV + age + DMPA)
+
+# filter lowly expressed genes
+keep <- filterByExpr(data_cds, design = design_matrix, group = BV)
+#print(summary(keep))
+data_cds_flr <- data_cds[keep,,keep.lib.sizes=FALSE]
+
+# extract unfiltered and filtered CPM
+x_cpm <- cpm(data_cds, log=TRUE, prior.count = 2)
+x_cpm_flr <- cpm(data_cds_flr, log = TRUE, prior.count = 2)
+
+# Voom transform
+data_voom <- voom(data_cds_flr$counts, design_matrix, plot = F)
+data_voom <- data_voom$E
+
+# define contrast
+my_contrasts <- makeContrasts(BV2_vs_BV0 = BV2 - BV0,
+                              BV1_vs_BV0 = BV1 - BV0,
+                              BV2_vs_BV1 = BV2 - BV1,
+                              levels = design_matrix)
+# fit model
+fit <- lmFit(data_voom, design_matrix)
+qlf <- contrasts.fit(fit, contrast=my_contrasts)
+qlf <-  eBayes(qlf)
+
+# combine group results
+lfc = 0
+decideTests <- decideTests(qlf, lfc = lfc)
+decideTests_unadj <- decideTests(qlf, lfc = lfc, adjust.method = "none")
+
+# group results
+topTab_B2_B0 <- topTable(qlf, coef = 1, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B1_B0 <- topTable(qlf, coef = 2, n = Inf) %>%
+  as_tibble(rownames = "ENSG")
+
+topTab_B2_B1 <- topTable(qlf, coef = 3, n = Inf) %>%
+  as_tibble(rownames = "ENSG") %>%
+  rename(logFC.B2_vs_B1 = logFC, 
+         AveExpr.B2_vs_B1 = AveExpr,
+         t.B2_vs_B1 = t, 
+         P.Value.B2_vs_B1 = P.Value, 
+         adj.P.Val.B2_vs_B1 = adj.P.Val, 
+         B.B2_vs_B1 = B)
+
+# put together
+topTab <- topTab_B2_B0 %>%
+  left_join(topTab_B1_B0, suffix = c(".B2_vs_B0", ".B1_vs_B0"), by = c("ENSG")) %>% 
+  left_join(topTab_B2_B1, suffix = c("", ".B2_vs_B1"), by = c("ENSG"))
+
+# data indicating whether transcripts are DEGs
+degs_adj <- data.frame(ENSG = rownames(decideTests), DEGs = decideTests)
+degs_unadj <- data.frame(ENSG = rownames(decideTests_unadj), DEGs = decideTests_unadj)
+
+degs <- degs_adj %>%
+  left_join(degs_unadj, suffix = c("", ".unadj"), by = c("ENSG"))
+
+# combine and add gene annotations
+res <- degs %>%
+  left_join(topTab, by = c("ENSG")) %>%
+  mutate_at(vars(contains("DEGs")), ~as.factor(.)) %>%
+  left_join(counts_anno, by = c("ENSG" = "ensembl_gene_id"))
+
+# DEGs summary
+summary(decideTests) %>%
+  kbl() %>%
+  kable_styling()
+
+res_model_2 <- res
+
+```
+
+## Boxplot of top hits
+
+::: {.panel-tabset}
+
+### BV2 vs. BV0
+```{r}
+#| label: fig-bv2-bv0-DMPA
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the smallest p.value."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+### BV2 vs. BV0 (logFC)
+```{r}
+#| label: fig-lfc-bv2-bv0-DMPA
+#| fig-cap: "Expression of the top transcripts for a given comparsions, based on the largest absolute logFC."
+#| fig-width: 12
+#| fig-height: 12
+
+n <- 9
+
+top_hits <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(desc(abs(logFC.B2_vs_B0))) %>%
+  slice(1:n) %>% 
+  pull(ENSG) 
+
+df_top_hits <- data.frame(ENSG = top_hits) %>%
+  left_join(res[, c("ENSG", "hgnc_symbol", "gene", "gene_biotype")], by = c("ENSG")) %>%
+  mutate(gene = fct_inorder(gene))
+  
+data_plot <- data_voom[df_top_hits$ENSG, ] %>%
+  t() %>% 
+  as_tibble(rownames = "PatID") %>%
+  pivot_longer(!PatID, names_to = "ENSG", values_to = "CPM") %>%
+  left_join(data_meta[, c("PatID", "BV")]) %>%
+  left_join(df_top_hits, by = c("ENSG")) 
+
+data_plot %>%
+  ggplot(aes(x = BV, y = CPM, fill = BV)) + 
+  geom_boxplot(alpha = 0.5) + 
+  facet_wrap(~gene) + 
+  theme_bw() + 
+  mytheme + 
+  ylab("log CPM") + 
+  theme(legend.position = "none")
+
+```
+
+:::
+
+# Heatmaps
+
+```{r}
+library(ComplexHeatmap)
+library(circlize)
+
+# Data Voom
+
+# define function to calculate z scores
+func_cal_z_score <- function(x){
+  (x - mean(x)) / sd(x)
+}
+```
+
+
+## V01
+
+Genes based on Model II (BV2 vs. BV0). 
+
+```{r}
+#| fig-width: 10
+#| fig-height: 10
+
+# select model
+res <- res_model_2
+
+# select genes
+genes <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  pull(ENSG)
+
+#genes <- genes[1:200]
+
+# input data
+x <- data_voom[genes, ]
+y <- data_meta %>%
+  mutate(group = paste("BV", BV, sep = "")) %>%
+  mutate(group = as.factor(group))
+
+print(dim(x))
+
+# scale data
+data_zscore <- t(apply(x, 1, func_cal_z_score))
+data_heatmap <- data_zscore
+
+# set color scale
+print(range(data_heatmap))
+cols_wong <- c("#0072b2", "#e69f00")
+col_fun = colorRamp2(c(-4, 0, 4), c(cols_wong[1], "white", cols_wong[2]))
+
+# annotations: columns
+ha_col <- HeatmapAnnotation(DMPA = data_meta$DMPA,
+                            col = list(DMPA = c("No" = "skyblue", "Yes" = "pink")))
+set.seed(1234)
+ht <- Heatmap(data_heatmap,
+        col = col_fun,
+        name = "h1",
+        show_row_names = FALSE,
+        show_column_names = FALSE,
+        show_row_dend = FALSE,
+        show_column_dend = TRUE,
+        column_split = y$group,
+        row_title_rot = 0,
+        top_annotation = ha_col,
+        cluster_column_slices = FALSE,
+        use_raster = TRUE)
+
+ht <- draw(ht)
+
+```
+
+
+## V02
+
+Genes based on Model II (BV2 vs. BV0). Top hits.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 10
+
+# select model
+res <- res_model_2
+
+# select genes
+lfc <- 1
+genes <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  filter(abs(logFC.B2_vs_B0) >= lfc) %>%
+  group_by(DEGs.BV2_vs_BV0) %>%
+  arrange(abs(logFC.B2_vs_B0)) %>%
+  slice(1:20) %>%
+  pull(ENSG)
+
+#genes <- genes[1:200]
+
+# input data
+x <- data_voom[genes, ]
+
+idx <- match(rownames(x), counts_anno$ensembl_gene_id)
+rows <- counts_anno$hgnc_symbol[idx]
+data_rows <- data.frame(ENSG = rownames(x), gene = rows) %>%
+  mutate(name = ifelse(gene == "", ENSG, gene))
+rownames(x) <- data_rows$name
+  
+y <- data_meta %>%
+  mutate(group = paste("BV", BV, sep = "")) %>%
+  mutate(group = as.factor(group))
+
+# scale data
+data_zscore <- t(apply(x, 1, func_cal_z_score))
+data_heatmap <- data_zscore
+
+# set color scale
+print(range(data_heatmap))
+cols_wong <- c("#0072b2", "#e69f00")
+col_fun = colorRamp2(c(-4, 0, 4), c(cols_wong[1], "white", cols_wong[2]))
+
+# annotations: columns
+ha_col <- HeatmapAnnotation(DMPA = data_meta$DMPA,
+                            col = list(DMPA = c("No" = "skyblue", "Yes" = "pink")))
+set.seed(1234)
+ht <- Heatmap(data_heatmap,
+        col = col_fun,
+        name = "h1",
+        show_row_names = TRUE,
+        row_names_side = "left",
+        show_column_names = FALSE,
+        show_row_dend = FALSE,
+        show_column_dend = TRUE,
+        column_split = y$group,
+        row_title_rot = 0,
+        top_annotation = ha_col,
+        cluster_column_slices = FALSE,
+        use_raster = TRUE)
+
+ht <- draw(ht)
+
+```
+
+## V03
+
+Genes based on Model II (BV2 vs. BV0), gene expression values adjusted for age and DMPA
+
+```{r}
+#| fig-width: 10
+#| fig-height: 10
+
+# input data
+y <- data_meta %>%
+  mutate(group = paste("BV", BV, sep = "")) %>%
+  mutate(group = as.factor(group))
+
+x <- data_voom
+
+# adjust data for age and DMPA
+head(fit$coefficients)
+
+coeff_age <- fit$coefficients[, "age"]
+coeff_DMPAYes <- fit$coefficients[, "DMPAYes"]
+
+x_age <- matrix(y$age, nrow = nrow(x), ncol = ncol(x), byrow = TRUE)
+x_DMPAYes <- matrix(data = as.numeric(y$DMPA)-1, nrow = nrow(x), ncol = ncol(x), byrow = TRUE)
+
+x_adj <- data_voom - 
+  coeff_age*x_age -
+  coeff_DMPAYes*x_DMPAYes
+  
+# select model
+res <- res_model_2
+
+# select genes
+genes <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  arrange(adj.P.Val.B2_vs_B0) %>%
+  pull(ENSG)
+
+genes <- genes[1:200]
+
+# subset data
+x <- x_adj[genes, ]
+print(dim(x))
+
+# scale data
+data_zscore <- t(apply(x, 1, func_cal_z_score))
+data_heatmap <- data_zscore
+
+# set color scale
+print(range(data_heatmap))
+cols_wong <- c("#0072b2", "#e69f00")
+col_fun = colorRamp2(c(-5, 0, 4), c(cols_wong[1], "white", cols_wong[2]))
+
+# annotations: columns
+ha_col <- HeatmapAnnotation(DMPA = data_meta$DMPA,
+                            col = list(DMPA = c("No" = "skyblue", "Yes" = "pink")))
+set.seed(1234)
+ht <- Heatmap(data_heatmap,
+        col = col_fun,
+        name = "h1",
+        show_row_names = FALSE,
+        show_column_names = FALSE,
+        show_row_dend = FALSE,
+        show_column_dend = TRUE,
+        column_split = y$group,
+        row_title_rot = 0,
+        top_annotation = ha_col,
+        cluster_column_slices = FALSE,
+        use_raster = TRUE)
+
+ht <- draw(ht)
+
+```
+
+## V04
+Genes based on Model II (BV2 vs. BV0), gene expression values adjusted for age and DMPA; top hits.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 10
+
+# input data
+y <- data_meta %>%
+  mutate(group = paste("BV", BV, sep = "")) %>%
+  mutate(group = as.factor(group))
+
+x <- data_voom
+
+# adjust data for age and DMPA
+head(fit$coefficients)
+
+coeff_age <- fit$coefficients[, "age"]
+coeff_DMPAYes <- fit$coefficients[, "DMPAYes"]
+
+x_age <- matrix(y$age, nrow = nrow(x), ncol = ncol(x), byrow = TRUE)
+x_DMPAYes <- matrix(data = as.numeric(y$DMPA)-1, nrow = nrow(x), ncol = ncol(x), byrow = TRUE)
+
+x_adj <- data_voom - 
+  coeff_age*x_age -
+  coeff_DMPAYes*x_DMPAYes
+  
+# select model
+res <- res_model_2
+
+# select genes
+lfc <- 1
+genes <- res %>%
+  filter(DEGs.BV2_vs_BV0 != 0) %>%
+  filter(abs(logFC.B2_vs_B0) >= lfc) %>%
+  group_by(DEGs.BV2_vs_BV0) %>%
+  arrange(abs(logFC.B2_vs_B0)) %>%
+  slice(1:20) %>%
+  pull(ENSG)
+
+# subset data
+x <- x_adj[genes, ]
+
+idx <- match(rownames(x), counts_anno$ensembl_gene_id)
+rows <- counts_anno$hgnc_symbol[idx]
+data_rows <- data.frame(ENSG = rownames(x), gene = rows) %>%
+  mutate(name = ifelse(gene == "", ENSG, gene))
+rownames(x) <- data_rows$name
+  
+print(dim(x))
+
+# scale data
+data_zscore <- t(apply(x, 1, func_cal_z_score))
+data_heatmap <- data_zscore
+
+# set color scale
+print(range(data_heatmap))
+cols_wong <- c("#0072b2", "#e69f00")
+col_fun = colorRamp2(c(-3.5, 0, 3.5), c(cols_wong[1], "white", cols_wong[2]))
+
+# annotations: columns
+ha_col <- HeatmapAnnotation(DMPA = data_meta$DMPA,
+                            col = list(DMPA = c("No" = "skyblue", "Yes" = "pink")))
+set.seed(1234)
+ht <- Heatmap(data_heatmap,
+        col = col_fun,
+        name = "h1",
+        show_row_names = TRUE,
+        row_names_side = "left",
+        show_column_names = FALSE,
+        show_row_dend = FALSE,
+        show_column_dend = TRUE,
+        column_split = y$group,
+        row_title_rot = 0,
+        top_annotation = ha_col,
+        cluster_column_slices = FALSE,
+        use_raster = TRUE)
+
+ht <- draw(ht)
+
+```

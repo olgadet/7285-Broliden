@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2025-05-28">
+<meta name="dcterms.date" content="2025-05-29">
 
 <title>Model: comparing BV groups</title>
 <style>
@@ -102,6 +102,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <ul class="collapse">
   <li><a href="#p-value-0.05" id="toc-p-value-0.05" class="nav-link" data-scroll-target="#p-value-0.05">p-value &lt; 0.05</a></li>
   </ul></li>
+  <li><a href="#model-iv" id="toc-model-iv" class="nav-link" data-scroll-target="#model-iv">Model IV</a></li>
   </ul>
 </nav>
 </div>
@@ -120,7 +121,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">May 28, 2025</p>
+      <p class="date">May 29, 2025</p>
     </div>
   </div>
   
@@ -412,6 +413,7 @@ N = 30</th>
 </section>
 <section id="model-i" class="level1">
 <h1>Model I</h1>
+<p><em>What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for age?</em></p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -648,6 +650,7 @@ Figure&nbsp;2: Expression of the top transcripts for a given comparsions, based 
 </section>
 <section id="model-ii" class="level1">
 <h1>Model II</h1>
+<p><em>What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for differences in DMPA and age?</em></p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -893,6 +896,7 @@ Figure&nbsp;4: Expression of the top transcripts for a given comparsions, based 
 </section>
 <section id="model-iii" class="level1">
 <h1>Model III</h1>
+<p><em>Subset analysis, exluding DMPA samples. What are the differences between BV groups (e.g., BV2 vs BV0), on average, after accounting for age?</em></p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -1124,12 +1128,12 @@ Figure&nbsp;5: Expression of the top transcripts for a given comparsions, based 
 <span id="cb16-27"><a href="#cb16-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"none"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <div class="cell-output-display">
-<div id="fig-lfc-bv2-bv0-model-3" class="quarto-float quarto-figure quarto-figure-center anchored">
+<div id="fig-lfc-bv2-bv0-model-4" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
-<div aria-describedby="fig-lfc-bv2-bv0-model-3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="model-compare-BV-groups-v03-only-and-check-DMPAs_files/figure-html/fig-lfc-bv2-bv0-model-3-1.png" class="img-fluid figure-img" width="1152">
+<div aria-describedby="fig-lfc-bv2-bv0-model-4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="model-compare-BV-groups-v03-only-and-check-DMPAs_files/figure-html/fig-lfc-bv2-bv0-model-4-1.png" class="img-fluid figure-img" width="1152">
 </div>
-<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-lfc-bv2-bv0-model-3-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-lfc-bv2-bv0-model-4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Figure&nbsp;6: Expression of the top transcripts for a given comparsions, based on the largest absolute logFC.
 </figcaption>
 </figure>
@@ -1182,7 +1186,126 @@ Figure&nbsp;7: Venn diagram for DEGs, adjusted p-value &lt; 0.05, lfc = 0; Model
 </div>
 </div>
 </div>
+<p>Comments:</p>
+<ul>
+<li>The smaller amount of DEGs in Model II (accounting for DMPA) could indicate that some genes you initially called DE in Model I were actually associated with DMPA status, not BV itself.</li>
+<li>Model II measures gene expression changes due to BV after adjusting for the effect of age and DMPA, assuming these effects are the same across BV groups.</li>
+</ul>
 </section>
+</section>
+<section id="model-iv" class="level1">
+<h1>Model IV</h1>
+<p><em>Including interaction terms between DMPA and BV groups</em></p>
+<p>Including DMPA as a covariate in Model II reduced the number of differentially expressed genes between BV2 and BV0 compared to Model I, suggesting that DMPA may confound the observed group differences. It is possible that the effect of DMPA on gene expression varies across BV groups, in which case a model incorporating interaction terms would be more appropriate to capture both the main effects (group differences) and any effect modification. To investigate this, Model IV was constructed to include interaction terms between BV status and DMPA use, allowing us to test whether the effect of BV changes depending on DMPA use.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># input data</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>matrix_counts <span class="ot">&lt;-</span> m_counts_v3</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>data_meta <span class="ot">&lt;-</span> df_meta_v3 <span class="sc">%&gt;%</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">BV =</span> BV_v3) <span class="sc">%&gt;%</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(data_contraception, <span class="at">by =</span> <span class="fu">c</span>(<span class="st">"countfile_v3"</span> <span class="ot">=</span> <span class="st">"File"</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">DMPA =</span> <span class="fu">as.factor</span>(Contraception)) <span class="sc">%&gt;%</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">DMPA =</span> <span class="fu">fct_recode</span>(Contraception, </span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>                           <span class="st">"No"</span> <span class="ot">=</span> <span class="st">"no HC"</span>,</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>                           <span class="st">"Yes"</span> <span class="ot">=</span> <span class="st">"DMPA"</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">DMPA =</span> <span class="fu">fct_relevel</span>(DMPA, <span class="st">"No"</span>)) </span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a><span class="co"># create edgeR object</span></span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>BV <span class="ot">&lt;-</span> data_meta<span class="sc">$</span>BV</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>age <span class="ot">&lt;-</span> data_meta<span class="sc">$</span>age</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>DMPA <span class="ot">&lt;-</span> data_meta<span class="sc">$</span>DMPA</span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a>data_cds <span class="ot">&lt;-</span> <span class="fu">DGEList</span>(matrix_counts, <span class="at">group =</span> BV)</span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a><span class="co"># design matrix</span></span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a>design_matrix <span class="ot">&lt;-</span> <span class="fu">model.matrix</span>(<span class="sc">~</span> BV <span class="sc">*</span> DMPA <span class="sc">+</span> age, <span class="at">data =</span> data_meta)</span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a><span class="co"># filter lowly expressed genes</span></span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a>keep <span class="ot">&lt;-</span> <span class="fu">filterByExpr</span>(data_cds, <span class="at">design =</span> design_matrix, <span class="at">group =</span> BV)</span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a><span class="co">#print(summary(keep))</span></span>
+<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>data_cds_flr <span class="ot">&lt;-</span> data_cds[keep,,keep.lib.sizes<span class="ot">=</span><span class="cn">FALSE</span>]</span>
+<span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a><span class="co"># extract unfiltered and filtered CPM</span></span>
+<span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a>x_cpm <span class="ot">&lt;-</span> <span class="fu">cpm</span>(data_cds, <span class="at">log=</span><span class="cn">TRUE</span>, <span class="at">prior.count =</span> <span class="dv">2</span>)</span>
+<span id="cb18-30"><a href="#cb18-30" aria-hidden="true" tabindex="-1"></a>x_cpm_flr <span class="ot">&lt;-</span> <span class="fu">cpm</span>(data_cds_flr, <span class="at">log =</span> <span class="cn">TRUE</span>, <span class="at">prior.count =</span> <span class="dv">2</span>)</span>
+<span id="cb18-31"><a href="#cb18-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a><span class="co"># Voom transform</span></span>
+<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a>data_voom <span class="ot">&lt;-</span> <span class="fu">voom</span>(data_cds_flr<span class="sc">$</span>counts, design_matrix, <span class="at">plot =</span> F)</span>
+<span id="cb18-34"><a href="#cb18-34" aria-hidden="true" tabindex="-1"></a>data_voom <span class="ot">&lt;-</span> data_voom<span class="sc">$</span>E</span>
+<span id="cb18-35"><a href="#cb18-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-36"><a href="#cb18-36" aria-hidden="true" tabindex="-1"></a><span class="co"># fit model</span></span>
+<span id="cb18-37"><a href="#cb18-37" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">lmFit</span>(data_voom, design_matrix)</span>
+<span id="cb18-38"><a href="#cb18-38" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">eBayes</span>(fit)</span>
+<span id="cb18-39"><a href="#cb18-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-40"><a href="#cb18-40" aria-hidden="true" tabindex="-1"></a><span class="co"># BV2 vs BV0 interaction with DMPA</span></span>
+<span id="cb18-41"><a href="#cb18-41" aria-hidden="true" tabindex="-1"></a>interaction_test <span class="ot">&lt;-</span> <span class="fu">topTable</span>(fit, <span class="at">coef =</span> <span class="st">"BV2:DMPAYes"</span>, <span class="at">number =</span> <span class="cn">Inf</span>)</span>
+<span id="cb18-42"><a href="#cb18-42" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">decideTests</span>(fit, <span class="at">coef =</span> <span class="st">"BV2:DMPAYes"</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb18-43"><a href="#cb18-43" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kbl</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb18-44"><a href="#cb18-44" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div id="tbl-degs-v3-model4" class="cell quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-tbl figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-degs-v3-model4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Table&nbsp;6: Differential expression results for the interaction term BV2:DMPAyes in the interaction model.
+</figcaption>
+<div aria-describedby="tbl-degs-v3-model4-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="cell-output-display">
+<table class="table do-not-create-environment cell caption-top table-sm table-striped small" data-quarto-postprocess="true">
+<thead>
+<tr class="header">
+<th style="text-align: left;" data-quarto-table-cell-role="th"></th>
+<th style="text-align: right;" data-quarto-table-cell-role="th">(Intercept)</th>
+<th style="text-align: right;" data-quarto-table-cell-role="th">BV1</th>
+<th style="text-align: right;" data-quarto-table-cell-role="th">BV2</th>
+<th style="text-align: right;" data-quarto-table-cell-role="th">DMPAYes</th>
+<th style="text-align: right;" data-quarto-table-cell-role="th">age</th>
+<th style="text-align: right;" data-quarto-table-cell-role="th">BV1:DMPAYes</th>
+<th style="text-align: right;" data-quarto-table-cell-role="th">BV2:DMPAYes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Down</td>
+<td style="text-align: right;">1450</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">29</td>
+<td style="text-align: right;">170</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">NotSig</td>
+<td style="text-align: right;">2747</td>
+<td style="text-align: right;">16956</td>
+<td style="text-align: right;">16896</td>
+<td style="text-align: right;">16321</td>
+<td style="text-align: right;">16955</td>
+<td style="text-align: right;">16956</td>
+<td style="text-align: right;">16956</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Up</td>
+<td style="text-align: right;">12759</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">31</td>
+<td style="text-align: right;">465</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+</tbody>
+</table>
+
+
+</div>
+</div>
+</figure>
+</div>
+</div>
+<p>No genes were found to be significantly differentially expressed for the interaction term (BV2:DMPAy), indicating that the effect of BV2 vs BV0 on gene expression does not significantly differ by DMPA status. This suggests that including an interaction term is not necessary in this context. While adding DMPA as a covariate in Model II changed the number of differentially expressed genes compared to Model I, this is likely because DMPA influences gene expression on its own. These results suggest that DMPA should be included as a covariate, but there is no need to include an interaction term in the model.</p>
 </section>
 
 </main>

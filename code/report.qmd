@@ -110,5 +110,7 @@ For the V3 samples, plasma E2 and P4 levels were measured using electrochemilumi
 - [model-compare-BV-groups.html](model-compare-BV-groups.html)
 - [model-compare-BV-groups-address-no-DEGs-in-V2.html](model-compare-BV-groups-address-no-DEGs-in-V2.html)
 - [model-compare-BV-groups-address-no-DEGs-in-V2-add-E2-P4.html](model-compare-BV-groups-address-no-DEGs-in-V2-add-E2-P4.html)
+- [model-compare-BV-groups-v03-only-and-check-DMPAs.html](model-compare-BV-groups-v03-only-and-check-DMPAs.html)
+- [heatmaps.html](heatmaps.html)
 
 
